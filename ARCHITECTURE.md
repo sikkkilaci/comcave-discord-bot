@@ -98,6 +98,11 @@ Faustregeln:
   optionale URL/Discord-Anhang-Metadaten, optionale Verknuepfung mit einer Pruefung/einem Bericht
   derselben Klasse), siehe "Lernmaterial" unten.
 - `AuditLogEntry`: Generisches Audit-Log fuer administrative Aktionen/Moderation.
+- `CourseEntry`/`CourseSpecialDay`: Kursplan-Eintraege einer Klasse (Kursnummer, Titel, Dozent,
+  Zeitraum bzw. Feiertag/unterrichtsfreie Zeit), importiert aus einer versionierten Quelldatei.
+  `CourseAcknowledgment`: Kenntnisnahme eines Mitglieds fuer einen Kurs-Slot.
+  `CourseUpcomingNotification`: Marker fuer bereits gesendete 7-Tage-Hinweise. Siehe "Kursplan"
+  unten.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
 daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt.
@@ -155,6 +160,16 @@ daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt
 > (siehe Design-Entscheidungen im Abschnitt "Lernmaterial" unten) - konsistent mit dem Rest der
 > Architektur, die Geschaeftsregeln grundsaetzlich in der Service-Schicht durchsetzt, nicht per
 > DB-Constraint.
+
+> **Migration `add_course_plan`:** Fuegt `CourseEntry`, `CourseSpecialDay`, `CourseAcknowledgment`
+> und `CourseUpcomingNotification` hinzu (alle mit `guildId`/`classId`-Fremdschluesseln, analog zu
+> `add_learning_materials`) - rein additiv. `CourseEntry` traegt einen zusammengesetzten Unique-Key
+> `[classId, courseNumber, startDate]` fuer einen idempotenten Import (siehe "Kursplan" unten) statt
+> einer generierten ID als einzigem Identifikator - so kann ein wiederholter Import denselben
+> Kurs-Slot zuverlaessig wiedererkennen. `CourseUpcomingNotification.courseEntryId` ist zusaetzlich
+> `@unique` (nicht nur Teil eines zusammengesetzten Keys), da hier maximal eine Benachrichtigung pro
+> Kurs jemals existieren darf - das Schema selbst verhindert Duplikate, unabhaengig von der
+> Abfragelogik.
 
 ## Implementierte Kernfunktionen
 
@@ -689,6 +704,96 @@ Design-Entscheidungen:
   neue Relation noetig, da die vorhandene `resolveLink()`-Validierung bereits sicherstellt, dass
   jede gespeicherte Verknuepfung gueltig und klassenzugehoerig ist.
 
+### Kursplan
+
+Fuenfte klassenbezogene Fachfunktion. Anders als Pruefungen/Termine/Berichte/Lernmaterial werden
+Kursplan-Eintraege nicht per Discord-Command einzeln angelegt, sondern aus einer versionierten
+externen Quelldatei importiert (aktuell nur fuer Klasse A: `data/course-plans/0002_KALENDER_ABLAUF_KW_preview.html`).
+Beteiligte Bausteine:
+
+- **Datenmodell** (`prisma/schema.prisma`): `CourseEntry` (ein Kurs-Slot: Kursnummer, Titel,
+  optionaler Dozent, Start-/Enddatum, Herkunfts-Datei), `CourseSpecialDay` (Feiertage/
+  unterrichtsfreie Zeiten, gleiches Muster), `CourseAcknowledgment` (Kenntnisnahme eines Mitglieds
+  fuer einen Kurs-Slot, `@@unique([courseEntryId, memberDiscordId])`) und
+  `CourseUpcomingNotification` (Marker fuer bereits gesendete 7-Tage-Hinweise,
+  `courseEntryId @unique`). Alle vier Modelle sind wie jedes andere Fachmodell immer sowohl nach
+  `guildId` als auch nach `classId` gescoped - **`classId` entscheidet allein, zu welcher Klasse ein
+  Kurs gehoert**, nicht der Dateiname oder Zeitpunkt des Imports. Klasse B/C eigene Kursplaene zu
+  geben bedeutet daher ausschliesslich: eine neue Quelldatei + einen neuen Eintrag in
+  `COURSE_PLAN_SOURCE_FILES` (siehe unten) - keine Schema- oder Code-Aenderung.
+- **Import** (`src/services/coursePlanImportService.ts`): `parseCoursePlanHtml()` ist eine reine
+  Funktion ohne Datei-/DB-Zugriff, die die `courses`/`special`-JS-Arrays aus dem `<script>`-Block
+  der Quell-HTML per Regex extrahiert - bewusst **kein `eval()`**, um keine beliebige JS-Ausfuehrung
+  aus einer Datei zuzulassen, und weil das Quellformat fest genug ist, dass ein gezielter Parser
+  ausreicht. Weicht die Anzahl geparster Eintraege von der Anzahl erkannter `{id:`/`{start:`-Marker
+  ab, bricht der Parser mit einer `ValidationError` ab, statt still unvollstaendige Daten zu
+  uebernehmen. `importCoursePlanFromFile()` schreibt die geparsten Daten idempotent per
+  `upsertCourseEntry()`/`upsertCourseSpecialDay()` (`coursePlanRepository.ts`): eindeutiger
+  Schluessel ist `[classId, courseNumber, startDate]` bzw. `[classId, startDate, endDate, label]` -
+  ein wiederholter Import mit unveraenderter Quelle aktualisiert nur bestehende Zeilen (keine
+  Duplikate), ein Import nach einer Quelldatei-Aenderung uebernimmt die geaenderten Felder gezielt.
+  `importCoursePlanFromFile()` selbst hat KEINE Berechtigungspruefung (Vertrauensgrenze wie ein
+  Repository) - sie liegt in den beiden Aufrufern: `/kursplan-importieren`
+  (`importCoursePlanForClass()`, prueft `isServerAdmin()`) und dem reproduzierbaren CLI-Skript
+  `src/scripts/importCoursePlan.ts` (`npm run course-plan:import`, laeuft ausserhalb des Bots ohne
+  Discord-Kontext - derselbe Vertrauenslevel wie `deployCommands.ts`).
+- **Aktueller/naechster Kurs** (`src/services/coursePlanService.ts`): `getCoursePlanOverviewForClass()`
+  normalisiert "heute" auf UTC-Mitternacht (`toDateOnlyUtc()`, `src/utils/dateTime.ts`) und
+  vergleicht das gegen `startDate`/`endDate` jedes `CourseEntry` der Klasse - liegt heute in keinem
+  Zeitraum, wird das ausdruecklich als "kein Kurs" statt eines falschen Ergebnisses gemeldet. Die
+  ISO-Kalenderwoche wird ueber `getIsoWeek()`/`getIsoWeekYear()` bestimmt - derselbe Standard-
+  Algorithmus, 1:1 aus der `isoWeek()`-Funktion der Quell-HTML portiert, damit Bot-Anzeige und
+  Quelldatei dieselbe Zaehlweise verwenden (verifiziert gegen die eigene Angabe der Quelle: KW 34
+  fuer den 17.08.2026). Eine Klasse ganz ohne `CourseEntry`-Zeilen (aktuell B/C) liefert
+  `hasOwnPlan: false` statt der Daten einer anderen Klasse. Fuer alle Lesezugriffe (Uebersicht,
+  Kenntnisnahme) gilt dieselbe `assertClassReadAccess()` wie bei Pruefungen/Terminen/Lernmaterial;
+  fuer den Status (`getCoursePlanStatusForClass()`, Klassenleitung/Admin) `assertClassManagementAccess()`
+  - keine zweite, parallele Berechtigungslogik.
+- **Kenntnisnahme**: `/kursplan` haengt an den aktuellen Kurs einen "Kenntnis genommen"-Button
+  (`src/bot/ui/coursePlanMessage.ts`, customId-Schema `coursePlan:ack:<courseEntryId>` nach
+  demselben Muster wie `class:select:<name>`/`verification:self-verify`). Der Button-Handler in
+  `interactionCreate.ts` ruft `acknowledgeCourseEntryForMember()` auf, die den Kurs immer per
+  `guildConfig.id` aufloest und dieselbe `assertClassReadAccess()` wie die Anzeige prueft - eine
+  manipulierte `courseEntryId` in der customId verschafft daher nie Zugriff auf eine fremde
+  Klasse/Guild. Eindeutigkeit der Kenntnisnahme liegt im Schema (`@@unique([courseEntryId,
+memberDiscordId])`); die Repository-Funktion prueft zusaetzlich per `findUnique()` vor dem
+  `create()` und liefert bei einem erneuten Klick `created: false` zurueck, statt einen zweiten
+  Eintrag anzulegen oder einen Fehler zu werfen.
+- **7-Tage-Hinweis** (`src/services/coursePlanNotificationService.ts`): wird bei jedem Bot-Start aus
+  dem `ready`-Event (`src/bot/events/ready.ts`) fuer jede Guild/Klasse aufgerufen - keine separate
+  Scheduler-Infrastruktur. `listCourseEntriesNeedingUpcomingNotification()` filtert Kurse, die
+  innerhalb von `UPCOMING_NOTICE_WINDOW_DAYS` (7) beginnen UND fuer die noch keine
+  `CourseUpcomingNotification` existiert (`upcomingNotification: { is: null }`-Relationsfilter).
+  Sobald ein Kurs erkannt wird, wird sofort eine `CourseUpcomingNotification`-Zeile angelegt UND ein
+  Audit-Log-Eintrag (`coursePlan.upcomingNotice`) geschrieben, bevor irgendetwas anderes passiert -
+  `courseEntryId` ist zusaetzlich `@unique` im Schema, sodass selbst ein hypothetischer doppelter
+  Aufruf nie zwei Benachrichtigungen fuer denselben Kurs anlegen kann. Das Posten der eigentlichen
+  Discord-Nachricht in die Klassen-Ankuendigungen (`Class.announcementChannelId`) ist bewusst
+  Best-Effort und lebt ausserhalb des Service (in `ready.ts`) - ein fehlender Kanal oder fehlende
+  Bot-Berechtigungen duerfen weder den Bot-Start verhindern noch die bereits erfolgte, im Audit-Log
+  nachvollziehbare Benachrichtigung ungeschehen machen.
+- Commands (`src/bot/commands/`): `/kursplan` (VERIFIED, `klasse/`), `/kursplan-status`
+  (KLASSENLEITUNG, `klasse/`), `/kursplan-importieren` (ADMIN, `admin/` - Import ist bewusst
+  strikter als das uebliche Klassenleitung-oder-Admin-Muster, da es sich um offizielle,
+  administrativ uebermittelte Daten handelt, nicht um taegliche Klassenleitungsarbeit).
+
+Design-Entscheidungen:
+
+- **Kein `eval()` fuer den HTML-Import.** Ein regexbasierter, auf das bekannte Quellformat
+  zugeschnittener Parser ist ausreichend maechtig und vermeidet das Sicherheitsrisiko, beliebigen
+  JavaScript-Code aus einer Datei auszufuehren.
+- **B/C-Status statt A-Daten als Fallback.** `hasOwnPlan: false` ist eine explizite Modell-Aussage
+  ("keine `CourseEntry`-Zeilen fuer diese Klasse"), niemals ein impliziter Fallback auf die Daten
+  einer anderen Klasse - genau das ist per Anforderung ausdruecklich verboten (A-Daten duerfen nicht
+  als Kursplan von B/C erscheinen).
+- **Kein separater Scheduler fuer den 7-Tage-Hinweis.** Die Pruefung haengt am ohnehin vorhandenen
+  `ready`-Event; ein Bot, der laenger als 7 Tage durchgehend laeuft, ohne neu zu starten, wuerde
+  einen neu in dieses Fenster rutschenden Kurs erst beim naechsten Neustart erkennen. Fuer eine
+  kleine, private Lerngruppe ohne Hochverfuegbarkeitsanspruch ist das ein akzeptabler Kompromiss
+  gegenueber einer zusaetzlichen Cron-/Timer-Infrastruktur; eine spaetere Ergaenzung (z. B.
+  taeglicher `setInterval()`-Check) waere lokal auf `ready.ts`/`coursePlanNotificationService.ts`
+  begrenzt.
+
 ### Admin-/Moderator-Rollen
 
 `GuildConfig.adminRoleId`/`moderatorRoleId` waren von Anfang an Teil des Schemas ("Rollen-IDs fuer
@@ -844,7 +949,14 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
 15. ~~**Logging/Audit-Log-Anzeige**~~ - **umgesetzt** fuer den Lesezugriff. `AuditLogEntry` wurde
     von Anfang an bei jeder relevanten Aktion geschrieben; `/audit-log` (siehe
     "Audit-Log-Anzeige" oben) macht die gesammelten Eintraege jetzt fuer globale Admins einsehbar.
-16. **Weitere Admin-Befehle**
+16. ~~**Kursplan (Klasse A)**~~ - **umgesetzt.** Siehe Abschnitt ["Kursplan" im
+    README](./README.md#kursplan) sowie "Kursplan" oben: strukturierter Import aus einer
+    versionierten Quelldatei, aktueller/naechster Kurs, Kenntnisnahme, 7-Tage-Hinweis.
+17. **Eigene Kurspläne für Klasse B/C** - reine Datenaufgabe auf Basis der bestehenden Architektur:
+    sobald eine versionierte Quelldatei fuer B/C vorliegt, genuegt ein neuer Eintrag in
+    `COURSE_PLAN_SOURCE_FILES` (`coursePlanImportService.ts`) und ein Import-Lauf - Schema, Services,
+    Commands und Permission-Pruefungen sind bereits klassen-generisch und brauchen keine Aenderung.
+18. **Weitere Admin-Befehle**
 
 Jede dieser Funktionen wird als eigener, in sich getesteter Arbeitsschritt umgesetzt, um das
 Projekt durchgehend in einem lauffaehigen Zustand zu halten.

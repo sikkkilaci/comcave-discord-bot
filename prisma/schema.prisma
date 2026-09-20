@@ -25,28 +25,32 @@ model GuildConfig {
   updatedAt DateTime @updatedAt
 
   // Rollen-IDs fuer das Berechtigungssystem (siehe src/permissions).
-  adminRoleId    String?
+  adminRoleId     String?
   moderatorRoleId String?
-  verifiedRoleId String?
+  verifiedRoleId  String?
 
   // Kanal-IDs fuer wiederkehrende Bot-Ausgaben.
-  logChannelId       String?
-  welcomeChannelId   String?
-  whereAmIChannelId  String? // #wo-bin-ich
+  logChannelId      String?
+  welcomeChannelId  String?
+  whereAmIChannelId String? // #wo-bin-ich
 
-  classes           Class[]
-  members           Member[]
-  auditLogs         AuditLogEntry[]
-  exams             Exam[]
-  appointments      Appointment[]
-  dailyReports      DailyReport[]
-  weeklyReports     WeeklyReport[]
-  learningMaterials LearningMaterial[]
+  classes                     Class[]
+  members                     Member[]
+  auditLogs                   AuditLogEntry[]
+  exams                       Exam[]
+  appointments                Appointment[]
+  dailyReports                DailyReport[]
+  weeklyReports               WeeklyReport[]
+  learningMaterials           LearningMaterial[]
+  courseEntries               CourseEntry[]
+  courseSpecialDays           CourseSpecialDay[]
+  courseAcknowledgments       CourseAcknowledgment[]
+  courseUpcomingNotifications CourseUpcomingNotification[]
 }
 
 /// Ein Mitglied der Lerngruppe, verknuepft mit seinem Discord-Account.
 model Member {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   guildId   String
   guild     GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
   discordId String
@@ -57,7 +61,7 @@ model Member {
   // Verifizierung / Onboarding.
   // SQLite kennt keine nativen Enums, daher String mit Validierung in der
   // Anwendungsschicht (siehe src/types/domain.ts): "PENDING" | "VERIFIED" | "REJECTED".
-  verificationStatus String @default("PENDING")
+  verificationStatus String             @default("PENDING")
   verifiedAt         DateTime?
   onboardingAnswers  OnboardingAnswer[]
 
@@ -68,7 +72,7 @@ model Member {
 
   // Klassenzuweisung.
   classId String?
-  class   Class? @relation(fields: [classId], references: [id], onDelete: SetNull)
+  class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
 
   @@unique([guildId, discordId])
   @@index([classId])
@@ -89,14 +93,14 @@ model OnboardingAnswer {
 /// Eine Klasse (A/B/C). Klassenleitung erhaelt ueber `leadRoleId` administrative
 /// Rechte, die per Permission-System auf genau diese Klasse beschraenkt werden.
 model Class {
-  id        String   @id @default(cuid())
-  guildId   String
-  guild     GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
-  name        String // z. B. "A", "B", "C"
-  roleId      String? // Discord-Rolle, die Mitglieder dieser Klasse erhalten
-  categoryId  String? // Discord-Kategorie fuer den privaten Klassenbereich
-  leadRoleId  String? // Rolle der Klassenleitung fuer diese Klasse
+  name       String // z. B. "A", "B", "C"
+  roleId     String? // Discord-Rolle, die Mitglieder dieser Klasse erhalten
+  categoryId String? // Discord-Kategorie fuer den privaten Klassenbereich
+  leadRoleId String? // Rolle der Klassenleitung fuer diese Klasse
 
   // Discord-ID der Person, die aktuell als Klassenleitung zugewiesen ist (falls
   // vorhanden). Separat von leadRoleId, damit bei einer Neuzuweisung/Entfernung
@@ -120,12 +124,16 @@ model Class {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members           Member[]
-  exams             Exam[]
-  appointments      Appointment[]
-  dailyReports      DailyReport[]
-  weeklyReports     WeeklyReport[]
-  learningMaterials LearningMaterial[]
+  members                     Member[]
+  exams                       Exam[]
+  appointments                Appointment[]
+  dailyReports                DailyReport[]
+  weeklyReports               WeeklyReport[]
+  learningMaterials           LearningMaterial[]
+  courseEntries               CourseEntry[]
+  courseSpecialDays           CourseSpecialDay[]
+  courseAcknowledgments       CourseAcknowledgment[]
+  courseUpcomingNotifications CourseUpcomingNotification[]
 
   @@unique([guildId, name])
   @@index([guildId, leadDiscordId])
@@ -265,9 +273,9 @@ model LearningMaterial {
 
 /// Zentrales Audit-Log fuer administrative Aktionen und Moderation.
 model AuditLogEntry {
-  id        String   @id @default(cuid())
-  guildId   String
-  guild     GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   actorDiscordId  String // wer hat die Aktion ausgefuehrt
   action          String // z. B. "member.verify", "class.assign", "moderation.mute"
@@ -276,4 +284,102 @@ model AuditLogEntry {
   createdAt       DateTime @default(now())
 
   @@index([guildId, createdAt])
+}
+
+/// Ein Kurs-Slot im Kursplan einer Klasse, aus einer versionierten Quelldatei
+/// importiert (siehe src/services/coursePlanImportService.ts). Bewusst
+/// klassen-/guild-gescoped wie jede andere Fachfunktion in diesem Schema,
+/// damit spaeter auch Klasse B/C eigene Eintraege bekommen koennen, ohne
+/// dieses Modell aendern zu muessen - `classId` entscheidet allein, zu
+/// welcher Klasse ein Kurs gehoert.
+model CourseEntry {
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId String
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  courseNumber String // Kursnummer aus der Quelle, z. B. "567469"
+  title        String // Kurstitel/Thema
+  trainer      String? // Dozent, falls in der Quelle angegeben (leerer String -> null)
+  startDate    DateTime // Beginn (Datumsgranularitaet, UTC-Mitternacht)
+  endDate      DateTime // Ende (Datumsgranularitaet, UTC-Mitternacht)
+
+  sourceFile         String // Pfad der versionierten Quelldatei, fuer Nachvollziehbarkeit
+  createdByDiscordId String // wer den Import ausgefuehrt hat
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  acknowledgments      CourseAcknowledgment[]
+  upcomingNotification CourseUpcomingNotification?
+
+  // Verhindert Duplikate bei wiederholtem Import: derselbe Kurs-Slot (Klasse +
+  // Kursnummer + Start) wird beim erneuten Import erkannt und aktualisiert
+  // statt neu angelegt (siehe upsertCourseEntry() in coursePlanRepository.ts).
+  @@unique([classId, courseNumber, startDate])
+  @@index([guildId, classId, startDate])
+}
+
+/// Unterrichtsfreier/besonderer Termin im Kursplan einer Klasse (Feiertag,
+/// unterrichtsfreie Zeit) - analog zu CourseEntry klassen-/guild-gescoped und
+/// ueber denselben Import-Weg befuellt.
+model CourseSpecialDay {
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId String
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  label     String
+  startDate DateTime
+  endDate   DateTime
+
+  sourceFile String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classId, startDate, endDate, label])
+  @@index([guildId, classId, startDate])
+}
+
+/// Kenntnisnahme eines verifizierten Mitglieds fuer einen Kurs-Slot -
+/// eindeutig pro Kurs+Mitglied (`@@unique`), ein erneuter Klick auf den
+/// "Kenntnis genommen"-Button erzeugt daher nie einen zweiten Eintrag (siehe
+/// acknowledgeCourseEntry() in coursePlanRepository.ts).
+model CourseAcknowledgment {
+  id            String      @id @default(cuid())
+  guildId       String
+  guild         GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId       String
+  class         Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  courseEntryId String
+  courseEntry   CourseEntry @relation(fields: [courseEntryId], references: [id], onDelete: Cascade)
+
+  memberDiscordId String
+  acknowledgedAt  DateTime @default(now())
+
+  @@unique([courseEntryId, memberDiscordId])
+  @@index([guildId, classId])
+}
+
+/// Merkt sich, dass fuer einen Kurs-Slot bereits die "startet in <= 7 Tagen"-
+/// Benachrichtigung erzeugt wurde. `courseEntryId` ist `@unique` (nicht nur
+/// `@@unique` mit weiteren Feldern), daher verhindert das Schema selbst -
+/// unabhaengig von der Abfragelogik in coursePlanNotificationService.ts -
+/// zuverlaessig doppelte Benachrichtigungen fuer denselben Kurs, auch bei
+/// wiederholten Bot-Starts.
+model CourseUpcomingNotification {
+  id            String      @id @default(cuid())
+  guildId       String
+  guild         GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId       String
+  class         Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  courseEntryId String      @unique
+  courseEntry   CourseEntry @relation(fields: [courseEntryId], references: [id], onDelete: Cascade)
+
+  notifiedAt DateTime @default(now())
+
+  @@index([guildId, classId])
 }

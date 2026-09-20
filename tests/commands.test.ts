@@ -43,6 +43,9 @@ describe('commandLoader', () => {
       'pruefung-lernmaterial': PermissionLevel.VERIFIED,
       'setup-admin-rollen': PermissionLevel.ADMIN,
       'audit-log': PermissionLevel.ADMIN,
+      kursplan: PermissionLevel.VERIFIED,
+      'kursplan-status': PermissionLevel.KLASSENLEITUNG,
+      'kursplan-importieren': PermissionLevel.ADMIN,
     };
 
     for (const [name, level] of Object.entries(expected)) {

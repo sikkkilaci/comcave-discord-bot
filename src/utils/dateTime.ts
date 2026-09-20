@@ -84,3 +84,59 @@ export function formatGermanDate(date: Date): string {
   const pad = (value: number): string => value.toString().padStart(2, '0');
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
 }
+
+/**
+ * Normalisiert ein Datum auf UTC-Mitternacht desselben Kalendertags (lokale
+ * Datumsanteile, in UTC neu zusammengesetzt). Wird fuer den Kursplan
+ * verwendet, damit Start-/Enddatum-Vergleiche ("liegt heute innerhalb dieses
+ * Kurszeitraums?") unabhaengig von Uhrzeit/Zeitzonen-Drift auf reiner
+ * Kalendertag-Ebene funktionieren (siehe coursePlanService.ts).
+ */
+export function toDateOnlyUtc(date: Date): Date {
+  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+}
+
+/** Parst ein Datum im Format `JJJJ-MM-TT` (ISO-Datum ohne Uhrzeit) zu UTC-Mitternacht. */
+export function parseIsoDateOnly(value: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) {
+    throw new ValidationError(`"${value}" ist kein gueltiges ISO-Datum (JJJJ-MM-TT).`);
+  }
+  const [, year, month, day] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  const isRealDate =
+    date.getUTCFullYear() === Number(year) &&
+    date.getUTCMonth() === Number(month) - 1 &&
+    date.getUTCDate() === Number(day);
+  if (!isRealDate) {
+    throw new ValidationError(`"${value}" ist kein gueltiges Datum.`);
+  }
+  return date;
+}
+
+/**
+ * Berechnet die ISO-8601-Kalenderwoche (Montag als Wochenbeginn, KW 1 enthaelt
+ * den ersten Donnerstag des Jahres) - Standardalgorithmus, portiert aus der
+ * urspruenglichen Kursplan-Vorschau-HTML (`isoWeek()`), damit Bot-Anzeige und
+ * die versionierte Quelldatei dieselbe Zaehlweise verwenden.
+ */
+export function getIsoWeek(date: Date): number {
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNumber = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - dayNumber);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  return Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+/**
+ * Liefert das ISO-Wochenjahr (kann nahe des Jahreswechsels vom Kalenderjahr
+ * abweichen) - analog zu WeeklyReport.year, das ebenfalls getrennt von der
+ * reinen Kalenderwochen-Zahl gefuehrt wird, um Kurse/Berichte um den
+ * Jahreswechsel eindeutig zu halten.
+ */
+export function getIsoWeekYear(date: Date): number {
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNumber = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - dayNumber);
+  return target.getUTCFullYear();
+}

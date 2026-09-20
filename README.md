@@ -3,12 +3,13 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind acht Kernfunktionen umgesetzt:
+Berechtigungssystem, Command-/Event-Infrastruktur) sind neun Kernfunktionen umgesetzt:
 **Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**,
 **private Klassenbereiche**, **klassenbezogene Klassenleitung**, **Pruefungen und Termine**,
-**Tages-/Wochenberichte als Berichtsheft-Grundlage** sowie **strukturiertes Lernmaterial** - die
-klassenbezogenen Fachfunktionen auf Basis der Klassenleitung. Weitere Fachfunktionen
-(weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
+**Tages-/Wochenberichte als Berichtsheft-Grundlage**, **strukturiertes Lernmaterial** sowie ein
+**Kursplan mit Kenntnisnahme und 7-Tage-Hinweis** (aktuell fuer Klasse A) - die klassenbezogenen
+Fachfunktionen auf Basis der Klassenleitung. Weitere Fachfunktionen (eigene Kursplaene fuer B/C,
+weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Verifizierung
@@ -226,6 +227,43 @@ fuer Admin oder die Klassenleitung der betroffenen Klasse (`assertClassManagemen
 beim Bearbeiten/Loeschen immer aus dem gespeicherten Datensatz aufgeloest), Lesen fuer jedes
 verifizierte Mitglied der eigenen Klasse (`assertClassReadAccess()`). Protokolliert werden
 `learningMaterial.create`/`.update`/`.delete`.
+
+## 🗓️ Kursplan
+
+Strukturierter Kursplan je Klasse, importiert aus einer versionierten Quelldatei (kein Live-Zugriff
+auf die HTML zur Laufzeit - siehe "Import" unten). Aktuell liegt nur fuer **Klasse A** ein Kursplan
+vor; die Architektur (Datenmodell, Import, Commands) ist bewusst klassen-generisch gehalten, damit
+Klasse B/C spaeter eigene Daten erhalten koennen, ohne Code/Modell aendern zu muessen.
+
+- `/kursplan [klasse:<A|B|C>]` (VERIFIED) - zeigt fuer die eigene (oder eine andere, sofern
+  berechtigte) Klasse die aktuelle ISO-Kalenderwoche, den **aktuellen Kurs** (falls das heutige
+  Datum in einem Kurszeitraum liegt, sonst ein ausdruecklicher "kein Kurs"-Hinweis) sowie den
+  **naechsten anstehenden Kurs**. Ist fuer die Klasse noch kein eigener Kursplan vorhanden (aktuell
+  B/C), erscheint statt Daten von Klasse A ein klarer Status-Hinweis: "Fuer deine Klasse liegt
+  aktuell noch kein eigener Kursplan vor", dass der A-Kursplan nur Vorschau/Beispiel und fuer B/C
+  **nicht verbindlich** ist, sowie der Hinweis, sich an Klassenleitung/OverHead zu wenden.
+- Zum aktuellen Kurs erscheint ein **"Kenntnis genommen"**-Button (nur solange noch nicht
+  bestaetigt) - ein Klick speichert Mitglied, Klasse, Kurs und Zeitpunkt. Ein erneuter Klick erzeugt
+  keine zweite Bestaetigung (eindeutig durch einen DB-Constraint pro Kurs+Mitglied).
+- `/kursplan-status klasse:<A|B|C>` (KLASSENLEITUNG/Admin) - zeigt aktuellen/naechsten Kurs sowie,
+  wer die Kenntnisnahme des aktuellen Kurses bereits bestaetigt hat und wer noch aussteht.
+  Klassenleitung darf ausschliesslich die eigene Klasse abfragen (`assertClassManagementAccess()`).
+- `/kursplan-importieren klasse:<A|B|C>` (nur Admins) - importiert/aktualisiert die Kursdaten einer
+  Klasse aus ihrer versionierten Quelldatei. Fuer Klassen ohne hinterlegte Quelle (aktuell B/C)
+  schlaegt der Befehl kontrolliert mit einer Fehlermeldung fehl, statt versehentlich Daten einer
+  anderen Klasse zu verwenden.
+
+**Import:** `data/course-plans/0002_KALENDER_ABLAUF_KW_preview.html` ist die versionierte
+Quelldatei fuer Klasse A. Ein regexbasierter Parser (bewusst kein `eval()`) extrahiert daraus
+Kursnummer/Titel/Zeitraum/Dozent sowie besondere/unterrichtsfreie Termine unveraendert - es werden
+keine Daten erfunden oder ergaenzt. Der Import ist idempotent: derselbe Kurs-Slot (Klasse +
+Kursnummer + Startdatum) wird bei einem erneuten Import erkannt und aktualisiert statt dupliziert.
+Reproduzierbarer CLI-Weg: `npm run course-plan:import -- <guildId> <actorDiscordId> [klasse=A]`.
+
+**7-Tage-Hinweis:** Bei jedem Bot-Start prueft der Bot automatisch, ob fuer eine Klasse ein neuer
+Kurs innerhalb der naechsten 7 Tage beginnt, und postet in dem Fall einen Hinweis in die
+Klassen-Ankuendigungen (`Class.announcementChannelId`, falls konfiguriert). Pro Kurs+Klasse wird das
+nur einmal ausgeloest (per DB-Constraint) - wiederholte Bot-Starts erzeugen keine doppelten Hinweise.
 
 ## Admin-/Moderator-Rollen
 
@@ -446,3 +484,14 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   `permissionLevel: ADMIN` am Command als auch zusaetzlich in `auditLogService.ts` selbst geprueft) -
   Klassenleitung und normale Mitglieder erhalten keinen Zugriff, auch nicht auf Eintraege der
   eigenen Klasse. Alle Abfragen sind strikt nach `guildConfig.id` gescoped.
+- Kursplan verwendet dieselben zentralen Funktionen wie alle anderen klassenbezogenen
+  Fachfunktionen: `assertClassReadAccess()` fuer `/kursplan` und die Kenntnisnahme
+  (`acknowledgeCourseEntryForMember()` loest den Kurs immer per `guildConfig.id` auf - eine
+  manipulierte oder fremde Kurs-ID liefert nie Zugriff auf eine andere Klasse/Guild), sowie
+  `assertClassManagementAccess()` fuer `/kursplan-status` (Klassenleitung B kann damit niemals den
+  Status/die Kenntnisnahme-Liste von Klasse A einsehen). Der Import (`/kursplan-importieren`) ist
+  bewusst strikter als das uebliche Klassenleitung-oder-Admin-Muster: nur `isServerAdmin()` darf
+  Kursdaten importieren, da es sich um offizielle, von der Administration uebermittelte Daten
+  handelt. Ein Mitglied ohne Klassenzuordnung (unverifiziert oder noch keine Klasse gewaehlt) erhaelt
+  fail-closed eine `PermissionError`/`ValidationError` statt Kursplan-Inhalten - dieselbe Ableitung
+  wie bei Pruefungen/Terminen/Lernmaterial, keine zusaetzliche Sonderpruefung.

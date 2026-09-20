@@ -21,6 +21,16 @@ export async function getMember(guildId: string, discordId: string): Promise<Mem
   });
 }
 
+/**
+ * Listet alle Mitglieder, die aktuell einer Klasse zugeordnet sind. Da eine
+ * Klassenzuordnung nur fuer verifizierte Mitglieder moeglich ist (siehe
+ * assignClass() in classService.ts), sind das automatisch ausschliesslich
+ * verifizierte Mitglieder - keine zusaetzliche Statuspruefung noetig.
+ */
+export async function listMembersByClassId(classId: string): Promise<Member[]> {
+  return prisma.member.findMany({ where: { classId } });
+}
+
 export type MemberWithClass = Member & { class: Class | null };
 
 /** Wie getMember(), laedt aber zusaetzlich die aktuell zugeordnete Klasse (falls vorhanden). */

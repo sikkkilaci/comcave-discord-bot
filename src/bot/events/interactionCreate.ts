@@ -23,6 +23,14 @@ import {
   parseAnswerCustomId,
 } from '../ui/onboardingMessage.js';
 import { buildClassSelectionMessage, parseClassCustomId } from '../ui/classMessage.js';
+import {
+  buildCoursePlanOverviewMessage,
+  parseCoursePlanAckCustomId,
+} from '../ui/coursePlanMessage.js';
+import {
+  acknowledgeCourseEntryForMember,
+  getCoursePlanOverviewForClass,
+} from '../../services/coursePlanService.js';
 import { findGuildMemberAcrossGuilds } from '../discordHelpers.js';
 import { CLASS_NAME_LABELS, type ClassName } from '../../types/domain.js';
 import { AppError } from '../../utils/errors.js';
@@ -121,6 +129,12 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   const className = parseClassCustomId(interaction.customId);
   if (className) {
     await handleClassSelect(interaction, className);
+    return;
+  }
+
+  const ackCourseEntryId = parseCoursePlanAckCustomId(interaction.customId);
+  if (ackCourseEntryId) {
+    await handleCoursePlanAck(interaction, ackCourseEntryId);
   }
 }
 
@@ -198,6 +212,37 @@ async function handleClassSelect(
     } else {
       await interaction.reply({ content, flags: MessageFlags.Ephemeral });
     }
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/**
+ * Verarbeitet einen Klick auf "Kenntnis genommen" unter /kursplan. Die
+ * /kursplan-Antwort ist immer ephemer, daher kann die Nachricht sicher direkt
+ * per interaction.update() aktualisiert werden (nur der klickende Nutzer sieht
+ * sie). Berechtigung/Fail-closed-Pruefung liegt vollstaendig in
+ * acknowledgeCourseEntryForMember() (assertClassReadAccess) - eine
+ * manipulierte Kurs-ID aus der customId verschafft daher nie Zugriff auf eine
+ * fremde Klasse.
+ */
+async function handleCoursePlanAck(
+  interaction: ButtonInteraction,
+  courseEntryId: string,
+): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    const ackResult = await acknowledgeCourseEntryForMember(guildConfig, member, courseEntryId);
+    const overview = await getCoursePlanOverviewForClass(guildConfig, member, ackResult.className);
+    const { embeds, components } = buildCoursePlanOverviewMessage(overview);
+
+    await interaction.update({ embeds, components });
   } catch (error) {
     await handleInteractionError(interaction, error);
   }
