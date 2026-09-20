@@ -1,5 +1,5 @@
 import type { StudyGroup, StudyGroupMember } from '@prisma/client';
-import { prisma } from '../db/client.js';
+import { isUniqueConstraintError, prisma } from '../db/client.js';
 
 export interface CreateStudyGroupInput {
   guildId: string;
@@ -79,6 +79,14 @@ export interface AddStudyGroupMemberInput {
  * (`@@unique([studyGroupId, memberDiscordId])`) - ein erneuter Beitrittsversuch
  * legt keinen zweiten Eintrag an, sondern liefert die bestehende Mitgliedschaft
  * zurueck (`created: false`).
+ *
+ * Der vorherige Check ist fuer sich genommen nicht atomar: bei zwei nahezu
+ * gleichzeitigen Beitrittsversuchen (z. B. Doppelklick) koennten beide
+ * `existing === null` sehen und beide `create()` versuchen. Die
+ * Unique-Constraint verhindert dabei zuverlaessig eine doppelte
+ * Mitgliedschaft, wuerde den zweiten (verlierenden) Versuch aber mit einem
+ * Datenbankfehler abbrechen lassen - stattdessen wird dieser Fall abgefangen
+ * und wie ein normaler "bereits Mitglied"-Treffer behandelt.
  */
 export async function addStudyGroupMember(
   input: AddStudyGroupMemberInput,
@@ -88,8 +96,18 @@ export async function addStudyGroupMember(
     return { membership: existing, created: false };
   }
 
-  const membership = await prisma.studyGroupMember.create({ data: input });
-  return { membership, created: true };
+  try {
+    const membership = await prisma.studyGroupMember.create({ data: input });
+    return { membership, created: true };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const raced = await getStudyGroupMembership(input.studyGroupId, input.memberDiscordId);
+      if (raced) {
+        return { membership: raced, created: false };
+      }
+    }
+    throw error;
+  }
 }
 
 export async function removeStudyGroupMember(

@@ -4,7 +4,7 @@ import type {
   CourseSpecialDay,
   CourseUpcomingNotification,
 } from '@prisma/client';
-import { prisma } from '../db/client.js';
+import { isUniqueConstraintError, prisma } from '../db/client.js';
 
 export interface UpsertCourseEntryInput {
   guildId: string;
@@ -113,6 +113,14 @@ export async function listCourseSpecialDaysByClassId(classId: string): Promise<C
  * sondern liefert die bereits bestehende Kenntnisnahme zurueck (`created:
  * false`), damit ein erneuter Klick auf den Button nie einen Duplikat-Fehler
  * ausloest.
+ *
+ * Der vorherige `findUnique()`-Check ist fuer sich genommen nicht atomar: bei
+ * zwei nahezu gleichzeitigen Aufrufen (z. B. sehr schnellem Doppelklick)
+ * koennten beide `existing === null` sehen und beide `create()` versuchen.
+ * Die Unique-Constraint verhindert dabei zuverlaessig ein Duplikat, wuerde
+ * den zweiten (verlierenden) Aufruf aber mit einem Datenbankfehler abbrechen
+ * lassen - stattdessen wird dieser Fall abgefangen und wie ein normaler
+ * "bereits vorhanden"-Treffer behandelt.
  */
 export async function acknowledgeCourseEntry(input: {
   guildId: string;
@@ -120,20 +128,30 @@ export async function acknowledgeCourseEntry(input: {
   courseEntryId: string;
   memberDiscordId: string;
 }): Promise<{ acknowledgment: CourseAcknowledgment; created: boolean }> {
-  const existing = await prisma.courseAcknowledgment.findUnique({
-    where: {
-      courseEntryId_memberDiscordId: {
-        courseEntryId: input.courseEntryId,
-        memberDiscordId: input.memberDiscordId,
-      },
+  const where = {
+    courseEntryId_memberDiscordId: {
+      courseEntryId: input.courseEntryId,
+      memberDiscordId: input.memberDiscordId,
     },
-  });
+  } as const;
+
+  const existing = await prisma.courseAcknowledgment.findUnique({ where });
   if (existing) {
     return { acknowledgment: existing, created: false };
   }
 
-  const acknowledgment = await prisma.courseAcknowledgment.create({ data: input });
-  return { acknowledgment, created: true };
+  try {
+    const acknowledgment = await prisma.courseAcknowledgment.create({ data: input });
+    return { acknowledgment, created: true };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const raced = await prisma.courseAcknowledgment.findUnique({ where });
+      if (raced) {
+        return { acknowledgment: raced, created: false };
+      }
+    }
+    throw error;
+  }
 }
 
 export async function listAcknowledgmentsForCourseEntry(
