@@ -13,6 +13,7 @@ describe('commandLoader', () => {
       verifizieren: PermissionLevel.EVERYONE,
       'mitglied-verifizieren': PermissionLevel.ADMIN,
       'verifizierung-status': PermissionLevel.EVERYONE,
+      onboarding: PermissionLevel.EVERYONE,
     };
 
     for (const [name, level] of Object.entries(expected)) {

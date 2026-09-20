@@ -3,6 +3,7 @@ import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
 import { getOrCreateGuildConfig } from '../../../repositories/guildConfigRepository.js';
 import { setMemberVerification } from '../../../services/verificationService.js';
+import { buildSafeOnboardingReplyPart } from '../../ui/onboardingMessage.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -20,7 +21,9 @@ const command: Command = {
       ? 'Du wurdest erfolgreich verifiziert! Willkommen in der Lerngruppe. 🎉'
       : 'Du bist bereits verifiziert.';
 
-    await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+    const onboardingPart = await buildSafeOnboardingReplyPart(interaction.guild.id, member.id);
+
+    await interaction.reply({ content, ...onboardingPart, flags: MessageFlags.Ephemeral });
   },
 };
 

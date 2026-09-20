@@ -3,9 +3,9 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) ist die erste Kernfunktion umgesetzt:
-**Verifizierung neuer Mitglieder**. Weitere Fachfunktionen (Onboarding, Klassenverwaltung,
-Berichte, Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
+Berechtigungssystem, Command-/Event-Infrastruktur) sind zwei Kernfunktionen umgesetzt:
+**Verifizierung neuer Mitglieder** und **dynamisches Onboarding**. Weitere Fachfunktionen
+(Klassenverwaltung, Berichte, Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Verifizierung
@@ -27,6 +27,36 @@ Ablauf:
 Alle Zustandsaenderungen laufen zentral durch `src/services/verificationService.ts`, das sowohl
 vom Button-Handler als auch von den Slash-Commands verwendet wird - keine doppelte Logik, ein
 einheitliches Audit-Log (`member.verify` / `member.reject` / `member.reset`).
+
+Verifizierung funktioniert sowohl im Server-Kanal als auch direkt in der Beitritts-DM (der Bot
+sucht dazu ueber alle Server, auf denen er aktiv ist, nach dem passenden Mitglied).
+
+## Onboarding
+
+Direkt im Anschluss an eine erfolgreiche Selbst-Verifizierung (Button oder `/verifizieren`)
+startet automatisch ein kurzer, dynamischer Fragebogen - in derselben Nachricht, per
+Select-Menu, ganz ohne Freitext:
+
+1. **IT-Vorerfahrung** (Einzelauswahl: Keine / Anfaenger:in / Fortgeschritten / Erfahren).
+2. **Technische Kenntnisse** (Mehrfachauswahl) - wird **uebersprungen**, wenn bei 1. "Keine"
+   gewaehlt wurde.
+3. **Bisherige IT-bezogene Taetigkeit** (Einzelauswahl aus Kategorien, z. B. "Ausbildung/Studium",
+   "Berufserfahrung") - ebenfalls uebersprungen bei "Keine IT-Erfahrung".
+4. **Lern- und IT-Interessen** (Mehrfachauswahl) - immer gefragt, Grundlage fuer spaetere
+   optionale Interessenrollen.
+
+Jede Antwort schaltet die naechste Frage in derselben Nachricht frei (`interaction.update()`,
+kein Nachrichten-Spam). Nach der letzten Frage erscheint eine Zusammenfassung mit einem
+**"Onboarding erneut ausfuellen"**-Button - alte Antworten gehen dabei nie verloren, es zaehlt
+immer die zuletzt gegebene Antwort pro Frage. Wer das Onboarding zwischendurch abbricht, holt es
+jederzeit mit `/onboarding` nach; der Befehl setzt automatisch an der naechsten offenen Frage fort
+bzw. zeigt die Zusammenfassung, falls bereits abgeschlossen.
+
+Erfasst werden ausschliesslich kategoriale Angaben (keine Freitextfelder) - bewusst, um keine
+unnoetigen personenbezogenen Daten zu erheben. `IT-Vorerfahrung` und `Interessen` werden zusaetzlich
+auf `Member.itExperienceLevel`/`Member.interests` denormalisiert, damit kuenftige Rollen- und
+Klassenlogik direkt darauf zugreifen kann, ohne den vollstaendigen Antwortverlauf durchsuchen zu
+muessen; die vollstaendige Historie bleibt unabhaengig davon in `OnboardingAnswer` erhalten.
 
 ## Voraussetzungen
 
@@ -113,12 +143,14 @@ src/
     commands/             Slash-Commands, nach Kategorie gruppiert
     events/                Discord-Event-Handler (inkl. guildMemberAdd, interactionCreate)
     handlers/               Command-/Event-Loader, Command-Deploy-Skript
-    ui/                       Wiederverwendbare Discord-UI-Bausteine (Embeds/Buttons)
+    ui/                       Wiederverwendbare Discord-UI-Bausteine (Embeds/Buttons/Select-Menus)
+    discordHelpers.ts          Kleine, gezielt testbare discord.js-Hilfsfunktionen
   config/                    Umgebungsvariablen-Validierung (Zod)
   db/                          Prisma-Client-Singleton
   permissions/                  Berechtigungsstufen & -pruefung
   repositories/                   Datenzugriffsschicht (kapselt Prisma)
-  services/                         Fachlogik, z. B. verificationService.ts
+  services/                         Fachlogik, z. B. verificationService.ts, onboardingService.ts,
+                                     onboardingFlow.ts (reine Fragen-/Skip-Logik ohne I/O)
   types/                              Gemeinsame TypeScript-Typen
   utils/                                Logger, Fehlerklassen
 prisma/
@@ -142,3 +174,11 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
 - Rollenvergabe/-entzug wird zentral im Verification-Service behandelt: fehlt dem Bot die
   Berechtigung (z. B. weil seine Rolle in der Hierarchie zu niedrig steht), wird das als
   verstaendliche Fehlermeldung an den Nutzer zurueckgegeben statt eines stillen Fehlschlags.
+- Onboarding erfasst bewusst nur kategoriale Auswahlantworten (feste Optionslisten), keine
+  Freitextfelder - so koennen keine unbeabsichtigten personenbezogenen Details erfasst werden.
+  Jede eingehende Antwort wird zusaetzlich serverseitig gegen die erlaubten Optionen validiert
+  (`src/services/onboardingFlow.ts`), auch wenn sie technisch nur ueber die vom Bot selbst
+  gesendeten Select-Menus zustande kommen sollte.
+- Am Onboarding kann nur teilnehmen, wer laut Datenbank aktuell `VERIFIED` ist
+  (`assertMemberVerified()`); das wird bei jedem Zugriff neu geprueft, nicht nur einmalig beim
+  Start des Fragebogens.

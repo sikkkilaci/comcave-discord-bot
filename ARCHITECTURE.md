@@ -48,7 +48,8 @@
   `getOrCreateGuildConfig()` angelegt, keine manuelle Ersteinrichtung noetig.
 - `Member`: Verknuepfung Discord-Nutzer <-> Verifizierungsstatus, IT-Erfahrung, Interessen,
   Klassenzuordnung.
-- `OnboardingAnswer`: Freie Frage/Antwort-Paare fuer dynamische Onboarding-Folgefragen.
+- `OnboardingAnswer`: Frage/Antwort-Paare fuer die dynamischen Onboarding-Folgefragen
+  (append-only Historie, siehe Onboarding-Abschnitt unten).
 - `Class`: Klasse (A/B/C) mit zugehoeriger Rolle, privatem Kategorie-Channel und
   Klassenleitungs-Rolle.
 - `AuditLogEntry`: Generisches Audit-Log fuer administrative Aktionen/Moderation.
@@ -107,6 +108,78 @@ Design-Entscheidungen:
   ist der persistente Button im konfigurierten Kanal der verlaessliche Weg; die DM ist eine
   zusaetzliche Erleichterung.
 
+> **Bugfix bei dieser Gelegenheit gefunden:** `interactionCreate.ts` brach bei Button-Interaktionen
+> bisher frueh ab, wenn `interaction.guild` fehlte (`if (!interaction.inGuild()) return;`). Das traf
+> unbemerkt auch auf Klicks auf den Verifizierungs-Button **innerhalb der Beitritts-DM** zu - dort
+> gibt es keinen Guild-Kontext, der Klick wurde also bisher stillschweigend ignoriert. Da das
+> Onboarding direkt an eine erfolgreiche Verifizierung anknuepfen soll und unabhaengig vom Kanal
+> (DM oder Server) zuverlaessig funktionieren muss, wurde das im Zuge dieser Arbeit behoben: Bei
+> einer Interaktion ohne Guild-Kontext wird das `GuildMember` jetzt ueber
+> `findGuildMemberAcrossGuilds()` (`src/bot/discordHelpers.ts`) durch Absuchen aller Server
+> ermittelt, auf denen der Bot aktiv ist. Verifizierung und der komplette Onboarding-Fragebogen
+> funktionieren dadurch jetzt korrekt auch vollstaendig innerhalb der DM.
+
+### Dynamisches Onboarding
+
+Startet automatisch nach erfolgreicher Selbst-Verifizierung und ist zusaetzlich jederzeit ueber
+`/onboarding` erreichbar. Beteiligte Bausteine:
+
+- `src/services/onboardingFlow.ts` - **reine, I/O-freie** Zustandsmaschine: Fragenreihenfolge,
+  welche Frage als naechstes drankommt (`getNextQuestion()`), Ueberspring-Regel (IT_SKILLS und
+  IT_BACKGROUND entfallen, wenn IT_EXPERIENCE = `KEINE` beantwortet wurde) und Validierung der
+  eingehenden Werte gegen die pro Frage erlaubten Optionen (`validateAnswer()`, ueber Zod-Schemas
+  aus `src/types/domain.ts`). Weil diese Datei kein Prisma und kein discord.js importiert, ist die
+  komplette Verzweigungslogik ohne Datenbank oder Discord-Verbindung unit-testbar
+  (`tests/onboardingFlow.test.ts`).
+- `src/repositories/onboardingRepository.ts` - reiner Datenzugriff auf `OnboardingAnswer`.
+  `recordAnswer()` haengt neue Antworten an (nichts wird geloescht oder ueberschrieben);
+  `getLatestAnswers()` faltet die Historie zu "eine Antwort pro Frage, die zuletzt gegebene
+  gewinnt" zusammen. Dadurch ist ein erneutes Ausfuellen (Redo) verlustfrei moeglich, ohne
+  Loeschlogik oder einen zusaetzlichen Unique-Constraint zu brauchen.
+- `src/services/onboardingService.ts` - Orchestrierung: `assertMemberVerified()` (Teilnahme nur
+  fuer Mitglieder mit Status `VERIFIED`, bei jedem Aufruf neu geprueft statt einmalig),
+  `getOnboardingState()` (Fortschritt lesen) und `submitAnswer()` (Antwort validieren, speichern,
+  bei `IT_EXPERIENCE`/`INTERESTS` zusaetzlich auf `Member.itExperienceLevel`/`Member.interests`
+  denormalisieren, bei Abschluss einen `member.onboarding_complete`-Audit-Log-Eintrag schreiben).
+- `src/bot/ui/onboardingMessage.ts` - baut aus der reinen Flow-Konfiguration die discord.js-
+  Select-Menus/Embeds/Buttons. `buildOnboardingMessageForState()` entscheidet rein anhand des
+  Zustands, ob die naechste Frage oder die Abschluss-Zusammenfassung (mit "Erneut ausfuellen"-
+  Button) gezeigt wird - ein einziger Rendering-Pfad fuer Fortsetzen, Neustart und die initiale
+  Frage nach der Verifizierung.
+- `src/bot/events/interactionCreate.ts` - neuer Zweig fuer `isStringSelectMenu()`-Interaktionen
+  sowie fuer den Restart-Button; jede Antwort ruft `interaction.update()` auf dieselbe Nachricht
+  auf (kein Nachrichten-Spam, ein durchgehendes Wizard-Erlebnis).
+- `/onboarding` (EVERYONE, aber `assertMemberVerified()` weist unverifizierte Mitglieder mit einer
+  klaren `PermissionError`-Meldung ab) - zeigt/setzt den Fragebogen fort.
+
+Design-Entscheidungen:
+
+- **Kein Schema-Update noetig.** `Member.itExperienceLevel`, `Member.interests` und
+  `OnboardingAnswer` waren bereits im Grundgeruest fuer genau diesen Zweck angelegt.
+- **Nur zwei Antworten werden denormalisiert.** `IT_SKILLS` (technische Kenntnisse) und
+  `IT_BACKGROUND` (bisherige Taetigkeit) bekommen bewusst **keine** eigene Member-Spalte, da fuer
+  sie aktuell keine konkrete Rollen-/Klassenlogik geplant ist, die einen eigenen Index braucht -
+  sie bleiben vollstaendig ueber `OnboardingAnswer`/`getLatestAnswers()` verfuegbar. Sollte sich
+  das aendern, ist eine zusaetzliche Spalte trivial nachruestbar, ohne die Erfassung selbst
+  anzufassen.
+- **Kategoriale Auswahl statt Freitext.** Alle vier Fragen sind Select-Menus mit fester
+  Optionsliste - keine Freitextfelder, damit keine unnoetigen personenbezogenen Details (z. B.
+  Namen von Arbeitgebern) erfasst werden koennen.
+- **Serverseitige Validierung trotz kontrolliertem Client.** Obwohl die Select-Menu-Werte vom Bot
+  selbst vorgegeben werden, validiert `validateAnswer()` trotzdem jede eingehende Antwort gegen
+  die erlaubte Optionsmenge (Anzahl, bekannte Werte, keine Duplikate) - schuetzt vor manipulierten
+  oder veralteten Interaktionen und wirft andernfalls eine `ValidationError`.
+- **Abbruch- und Wiederholungssicherheit ohne eigenes Session-State.** Der Zustand ergibt sich
+  jederzeit rein aus den gespeicherten Antworten (`getNextQuestion(getLatestAnswers(member))`).
+  Ein Abbruch mitten im Fragebogen hinterlaesst keine Inkonsistenz - `/onboarding` setzt beim
+  naechsten Aufruf einfach an der ersten noch unbeantworteten Frage fort. Ein bewusster Neustart
+  (Button auf der Abschluss-Zusammenfassung) beantwortet die Fragen einfach erneut, ohne alte
+  Antworten zu loeschen.
+- **Fehler beim Onboarding-Rendering duerfen die Verifizierungsbestaetigung nicht gefaehrden.**
+  `buildSafeOnboardingReplyPart()` faengt Fehler beim Laden des Onboarding-Zustands isoliert ab
+  und loggt sie, statt die gesamte Antwort (inklusive der bereits erfolgreichen
+  Verifizierungsbestaetigung) scheitern zu lassen.
+
 ## Sicherheitsueberlegungen
 
 - Keine Zugangsdaten im Repository (`.env` ignoriert, nur `.env.example` mit Platzhaltern).
@@ -120,6 +193,11 @@ Design-Entscheidungen:
 - Rollenvergabe erfolgt ausschliesslich serverseitig ueber den Verification-Service; ein Nutzer
   kann sich nur die konkret konfigurierte Verifiziert-Rolle selbst zuweisen (Button/`/verifizieren`),
   nie eine beliebige Rolle.
+- Onboarding erhebt bewusst **keine Freitextfelder** und keine sensiblen persoenlichen Daten -
+  ausschliesslich Auswahl aus festen, kategorialen Optionslisten (siehe Onboarding-Abschnitt oben).
+- Onboarding ist an den Verifizierungsstatus gekoppelt (`assertMemberVerified()`), nicht an eine
+  einmalige Pruefung beim Start - ein zwischenzeitlicher Statuswechsel (z. B. Admin setzt ein
+  Mitglied zurueck) sperrt den weiteren Fragebogen sofort beim naechsten Zugriff.
 
 ## Roadmap der Kernfunktionen
 
@@ -128,10 +206,13 @@ Die folgenden Funktionen sind der naechste Ausbauschritt auf Basis dieses Grundg
 
 1. ~~**Verifizierung neuer Mitglieder**~~ - **umgesetzt.** Siehe Abschnitt
    ["Verifizierung" im README](./README.md#verifizierung) fuer den Ablauf und
-   "Implementierte Kernfunktionen" unten fuer die technischen Details.
-2. **Intelligentes Onboarding mit dynamischen Folgefragen** - nutzt `OnboardingAnswer`.
-3. **Erfassung IT-Erfahrung und Interessen** - Teil des Onboarding-Flows.
-4. **Optionale Interessenrollen** - Rollenvergabe basierend auf erfassten Interessen.
+   "Implementierte Kernfunktionen" oben fuer die technischen Details.
+2. ~~**Intelligentes Onboarding mit dynamischen Folgefragen**~~ - **umgesetzt.** Siehe Abschnitt
+   ["Onboarding" im README](./README.md#onboarding) sowie "Dynamisches Onboarding" oben.
+3. ~~**Erfassung IT-Erfahrung und Interessen**~~ - **umgesetzt**, Teil des Onboarding-Flows
+   (`Member.itExperienceLevel`/`Member.interests`).
+4. **Optionale Interessenrollen** - naechster logischer Schritt: Rollenvergabe basierend auf den
+   jetzt erfassten `Member.interests`.
 5. **Klassenzuweisung A/B/C** - nutzt `Class`/`Member.classId`.
 6. **`#wo-bin-ich` mit Auswahl A/B/C** - Self-Service-Variante der Klassenzuweisung.
 7. **Private Klassenbereiche** - Discord-Kategorien/Kanaele je `Class.categoryId`.

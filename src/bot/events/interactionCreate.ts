@@ -5,13 +5,23 @@ import {
   type GuildMember,
   type Interaction,
   type RepliableInteraction,
+  type StringSelectMenuInteraction,
 } from 'discord.js';
 import type { BotEvent } from '../../types/event.js';
 import type { BotClient } from '../../types/client.js';
 import { getOrCreateGuildConfig } from '../../repositories/guildConfigRepository.js';
 import { hasPermissionLevel } from '../../permissions/checkPermission.js';
 import { setMemberVerification } from '../../services/verificationService.js';
+import { assertMemberVerified, submitAnswer } from '../../services/onboardingService.js';
 import { VERIFY_BUTTON_CUSTOM_ID } from '../ui/verificationMessage.js';
+import {
+  ONBOARDING_RESTART_CUSTOM_ID,
+  buildOnboardingMessageForState,
+  buildOnboardingStepMessage,
+  buildSafeOnboardingReplyPart,
+  parseAnswerCustomId,
+} from '../ui/onboardingMessage.js';
+import { findGuildMemberAcrossGuilds } from '../discordHelpers.js';
 import { AppError } from '../../utils/errors.js';
 import { createChildLogger } from '../../utils/logger.js';
 
@@ -27,6 +37,11 @@ const event: BotEvent<'interactionCreate'> = {
 
     if (interaction.isButton()) {
       await handleButton(interaction);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      await handleSelectMenu(interaction);
     }
   },
 };
@@ -71,20 +86,88 @@ async function handleChatInputCommand(interaction: ChatInputCommandInteraction):
   }
 }
 
-async function handleButton(interaction: ButtonInteraction): Promise<void> {
-  if (!interaction.inGuild() || !interaction.guild) return;
-  if (interaction.customId !== VERIFY_BUTTON_CUSTOM_ID) return;
+/**
+ * Loest das GuildMember zu einer Button-/Select-Menu-Interaktion auf. Bei
+ * einer Interaktion innerhalb eines Servers ist es direkt vorhanden; bei
+ * einer Interaktion per DM (z. B. Klick auf den Verifizierungs-Button aus der
+ * Beitritts-DM) fehlt der Guild-Kontext, daher wird ueber alle Server
+ * gesucht, auf denen der Bot aktiv ist.
+ */
+async function resolveInteractionMember(
+  interaction: ButtonInteraction | StringSelectMenuInteraction,
+): Promise<GuildMember | null> {
+  if (interaction.inGuild()) return interaction.member as GuildMember;
+  return findGuildMemberAcrossGuilds(interaction.client.guilds.cache.values(), interaction.user.id);
+}
 
+const NO_SHARED_GUILD_MESSAGE =
+  'Ich konnte dich auf keinem Server finden, auf dem ich aktiv bin. ' +
+  'Bitte versuche es im Server-Kanal erneut.';
+
+async function handleButton(interaction: ButtonInteraction): Promise<void> {
+  if (interaction.customId === VERIFY_BUTTON_CUSTOM_ID) {
+    await handleVerifyButton(interaction);
+    return;
+  }
+
+  if (interaction.customId === ONBOARDING_RESTART_CUSTOM_ID) {
+    await handleOnboardingRestart(interaction);
+  }
+}
+
+async function handleVerifyButton(interaction: ButtonInteraction): Promise<void> {
   try {
-    const guildConfig = await getOrCreateGuildConfig(interaction.guild.id);
-    const member = interaction.member as GuildMember;
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
     const result = await setMemberVerification(member, guildConfig, 'VERIFIED', member.id);
 
     const content = result.changed
       ? 'Du wurdest erfolgreich verifiziert! Willkommen in der Lerngruppe. 🎉'
       : 'Du bist bereits verifiziert.';
 
-    await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+    const onboardingPart = await buildSafeOnboardingReplyPart(member.guild.id, member.id);
+
+    await interaction.reply({ content, ...onboardingPart, flags: MessageFlags.Ephemeral });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+async function handleOnboardingRestart(interaction: ButtonInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await assertMemberVerified(member.guild.id, member.id);
+    const { embeds, components } = buildOnboardingStepMessage('IT_EXPERIENCE');
+    await interaction.update({ embeds, components });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+async function handleSelectMenu(interaction: StringSelectMenuInteraction): Promise<void> {
+  const question = parseAnswerCustomId(interaction.customId);
+  if (!question) return;
+
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const state = await submitAnswer(member.guild.id, member.id, question, interaction.values);
+    const { embeds, components } = buildOnboardingMessageForState(state);
+    await interaction.update({ embeds, components });
   } catch (error) {
     await handleInteractionError(interaction, error);
   }
