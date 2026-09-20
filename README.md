@@ -3,12 +3,12 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind sieben Kernfunktionen umgesetzt:
+Berechtigungssystem, Command-/Event-Infrastruktur) sind acht Kernfunktionen umgesetzt:
 **Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**,
-**private Klassenbereiche**, **klassenbezogene Klassenleitung**, **Pruefungen und Termine** sowie
-**Tages-/Wochenberichte als Berichtsheft-Grundlage** - die klassenbezogenen Fachfunktionen auf
-Basis der Klassenleitung. Weitere Fachfunktionen (Lernmaterial, weitergehende Moderation, ...)
-werden darauf aufbauend schrittweise ergaenzt.
+**private Klassenbereiche**, **klassenbezogene Klassenleitung**, **Pruefungen und Termine**,
+**Tages-/Wochenberichte als Berichtsheft-Grundlage** sowie **strukturiertes Lernmaterial** - die
+klassenbezogenen Fachfunktionen auf Basis der Klassenleitung. Weitere Fachfunktionen
+(weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Verifizierung
@@ -199,6 +199,30 @@ Bearbeiten/Loeschen immer aus dem gespeicherten Datensatz aufgeloest), Lesen fue
 verifizierte Mitglied der eigenen Klasse (`assertClassReadAccess()`). Protokolliert werden
 `dailyReport.create`/`.update`/`.delete` bzw. `weeklyReport.create`/`.update`/`.delete`.
 
+## 📚 Lernmaterial
+
+Vierte klassenbezogene Fachfunktion nach demselben Muster - strukturiertes Lernmaterial je Klasse.
+
+- `/lernmaterial-erstellen klasse:<A|B|C> titel:<...> beschreibung:<...> fach:<...> kategorie:<...> [url:<...>] [datei:<Anhang>] [verknuepfung-typ:<...>] [verknuepfung-id:<...>]`
+- `/lernmaterial-bearbeiten material-id:<...> [titel:<...>] [beschreibung:<...>] [fach:<...>] [kategorie:<...>] [url:<...>] [datei:<Anhang>] [verknuepfung-typ:<...>] [verknuepfung-id:<...>]`
+- `/lernmaterial-loeschen material-id:<...>`
+- `/lernmaterial-anzeigen [klasse:<A|B|C>]` - ohne Angabe wird die eigene Klasse angezeigt, gruppiert nach Kategorie
+
+**Kategorien** (zentral in `src/types/domain.ts` definiert, leicht erweiterbar):
+🖥️ IT / Technik, 🌐 Netzwerke, 💻 Programmierung, 🗄️ Datenbanken, 🔐 IT-Sicherheit,
+🎓 Allgemeine Pruefungsvorbereitung.
+
+**Optionale Verknuepfung:** Lernmaterial kann optional mit einer Pruefung oder einem Tages-/
+Wochenbericht **derselben Klasse** verknuepft werden (`verknuepfung-typ` + `verknuepfung-id`,
+beide gemeinsam erforderlich). Eine Verknuepfung zu einem Datensatz einer anderen Klasse wird
+serverseitig abgelehnt, auch wenn die ID gueltig ist.
+
+Zugriff und Audit-Logging funktionieren identisch zu Pruefungen/Terminen/Berichten: Verwalten nur
+fuer Admin oder die Klassenleitung der betroffenen Klasse (`assertClassManagementAccess()`, Klasse
+beim Bearbeiten/Loeschen immer aus dem gespeicherten Datensatz aufgeloest), Lesen fuer jedes
+verifizierte Mitglied der eigenen Klasse (`assertClassReadAccess()`). Protokolliert werden
+`learningMaterial.create`/`.update`/`.delete`.
+
 ## Voraussetzungen
 
 - Node.js 22+
@@ -297,7 +321,8 @@ src/
                                      examService.ts / appointmentService.ts (Pruefungen/Termine),
                                      dailyReportService.ts / weeklyReportService.ts
                                      (Tages-/Wochenberichte), berichtsheftService.ts (kombinierte
-                                     Berichtsheft-Sicht), discordRoleSync.ts (gemeinsame
+                                     Berichtsheft-Sicht), learningMaterialService.ts
+                                     (Lernmaterial), discordRoleSync.ts (gemeinsame
                                      Rollenvergabe-Fehlerbehandlung)
   types/                              Gemeinsame TypeScript-Typen
   utils/                                Logger, Fehlerklassen, dateTime.ts (Datum/Uhrzeit-Parsing)
@@ -356,3 +381,9 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   die tatsaechliche Klasse, nie ein vom Aufrufer angegebener Klassenname. Kalenderwoche (1-53,
   ganzzahlig) und Zeitraum (Ende darf nicht vor dem Beginn liegen) werden serverseitig validiert,
   bevor ein Wochenbericht gespeichert wird.
+- Lernmaterial verwendet dieselben zwei zentralen Funktionen nach demselben Muster
+  (`material.classId` -> `getClassById()` beim Bearbeiten/Loeschen). Eine optionale Verknuepfung
+  mit einer Pruefung oder einem Bericht wird zusaetzlich serverseitig geprueft: der referenzierte
+  Datensatz muss existieren UND zur selben Klasse gehoeren wie das Lernmaterial selbst - eine
+  manipulierte Verknuepfungs-ID, die auf eine fremde Klasse zeigt, wird abgelehnt. Die Kategorie
+  wird gegen eine feste, zentral gepflegte Liste validiert.

@@ -34,13 +34,14 @@ model GuildConfig {
   welcomeChannelId   String?
   whereAmIChannelId  String? // #wo-bin-ich
 
-  classes       Class[]
-  members       Member[]
-  auditLogs     AuditLogEntry[]
-  exams         Exam[]
-  appointments  Appointment[]
-  dailyReports  DailyReport[]
-  weeklyReports WeeklyReport[]
+  classes           Class[]
+  members           Member[]
+  auditLogs         AuditLogEntry[]
+  exams             Exam[]
+  appointments      Appointment[]
+  dailyReports      DailyReport[]
+  weeklyReports     WeeklyReport[]
+  learningMaterials LearningMaterial[]
 }
 
 /// Ein Mitglied der Lerngruppe, verknuepft mit seinem Discord-Account.
@@ -119,11 +120,12 @@ model Class {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members       Member[]
-  exams         Exam[]
-  appointments  Appointment[]
-  dailyReports  DailyReport[]
-  weeklyReports WeeklyReport[]
+  members           Member[]
+  exams             Exam[]
+  appointments      Appointment[]
+  dailyReports      DailyReport[]
+  weeklyReports     WeeklyReport[]
+  learningMaterials LearningMaterial[]
 
   @@unique([guildId, name])
   @@index([guildId, leadDiscordId])
@@ -220,6 +222,45 @@ model WeeklyReport {
   updatedAt DateTime @updatedAt
 
   @@index([guildId, classId, year, calendarWeek])
+}
+
+/// Lernmaterial einer Klasse (Titel, Beschreibung, Fach/Thema, Kategorie,
+/// optional URL/Discord-Anhang, optional Verknuepfung mit einer Pruefung oder
+/// einem Bericht DERSELBEN Klasse). Verwaltet ausschliesslich von Admin oder
+/// der Klassenleitung genau dieser Klasse (siehe learningMaterialService.ts).
+model LearningMaterial {
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId String
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String
+  subject     String // Fach/Thema
+  category    String // siehe LEARNING_MATERIAL_CATEGORIES in src/types/domain.ts
+
+  url String? // optionaler externer Link
+
+  // Optionale Discord-Anhang-Metadaten - der Anhang selbst bleibt auf Discords
+  // CDN, hier wird nur der Verweis gespeichert (siehe ARCHITECTURE.md).
+  attachmentUrl         String?
+  attachmentName        String?
+  attachmentContentType String?
+
+  // Optionale Verknuepfung mit einer Pruefung/einem Bericht DERSELBEN Klasse.
+  // Bewusst kein DB-Fremdschluessel (waere polymorph auf drei verschiedene
+  // Zieltabellen) - Existenz und Klassenzugehoerigkeit werden stattdessen
+  // serverseitig im Service geprueft (siehe learningMaterialService.ts).
+  linkedType String? // "EXAM" | "DAILY_REPORT" | "WEEKLY_REPORT", siehe src/types/domain.ts
+  linkedId   String?
+
+  createdByDiscordId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, classId, category])
 }
 
 /// Zentrales Audit-Log fuer administrative Aktionen und Moderation.

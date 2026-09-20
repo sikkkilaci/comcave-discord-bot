@@ -59,13 +59,15 @@ Faustregeln:
   direkt im Anzeigetext, wodurch Buttons, #wo-bin-ich-Footer und Bestaetigungstexte
   (`interactionCreate.ts`, `/setup-klassen`) es automatisch mitbekommen - keine zweite Emoji-Zuordnung
   parallel pflegen.
-- **Neue Fachbereiche** (Lernmaterial 📚, Hilfe 🆘, Sprachkanal 🔊 - siehe Roadmap) erhalten ihr
-  Emoji, sobald die zugehoerige UI tatsaechlich existiert; es wird nichts vorab in Commands/Embeds
-  eingebaut, die es noch nicht gibt. Bereits umgesetzt: Klassenleitung 👑
-  (`/setup-klassenleitung`, `/entferne-klassenleitung`), Pruefungen 🎓 und Termine 📅 (alle
-  `/pruefung-*`/`/termin-*`-Befehle und ihre Embeds), sowie Berichtsheft 📝, Tagesbericht 📋 und
-  Kalenderwoche/Zeitraum 📅 (alle `/tagesbericht-*`/`/wochenbericht-*`/`/berichtsheft-*`-Befehle;
-  Lerninhalte werden innerhalb der Embeds zusaetzlich mit 📚 markiert).
+- **Neue Fachbereiche** (Hilfe 🆘, Sprachkanal 🔊 - siehe Roadmap) erhalten ihr Emoji, sobald die
+  zugehoerige UI tatsaechlich existiert; es wird nichts vorab in Commands/Embeds eingebaut, die es
+  noch nicht gibt. Bereits umgesetzt: Klassenleitung 👑 (`/setup-klassenleitung`,
+  `/entferne-klassenleitung`), Pruefungen 🎓 und Termine 📅 (alle `/pruefung-*`/`/termin-*`-Befehle
+  und ihre Embeds), Berichtsheft 📝, Tagesbericht 📋 und Kalenderwoche/Zeitraum 📅 (alle
+  `/tagesbericht-*`/`/wochenbericht-*`/`/berichtsheft-*`-Befehle; Lerninhalte werden innerhalb der
+  Embeds zusaetzlich mit 📚 markiert), sowie Lernmaterial 📚 (alle `/lernmaterial-*`-Befehle und ihr
+  Embed) mit kategoriespezifischen Emojis in den Kategorie-Labels selbst (🖥️/🌐/💻/🗄️/🔐/🎓, siehe
+  `LEARNING_MATERIAL_CATEGORY_LABELS` in `src/types/domain.ts`).
 
 ## Datenmodell (aktueller Stand)
 
@@ -92,6 +94,9 @@ Faustregeln:
   "Berichtsheft, Tages- und Wochenberichte" unten.
 - `WeeklyReport`: Wochenbericht einer Klasse (Jahr, Kalenderwoche, Zeitraum, Themen,
   Lernfortschritt, Hinweise) - ebenfalls Berichtsheft-Grundlage.
+- `LearningMaterial`: Lernmaterial einer Klasse (Titel, Beschreibung, Fach/Thema, Kategorie,
+  optionale URL/Discord-Anhang-Metadaten, optionale Verknuepfung mit einer Pruefung/einem Bericht
+  derselben Klasse), siehe "Lernmaterial" unten.
 - `AuditLogEntry`: Generisches Audit-Log fuer administrative Aktionen/Moderation.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
@@ -136,6 +141,20 @@ daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt
 > unten, der genau diese kombinierte Sicht stattdessen zur Laufzeit erzeugt). `WeeklyReport.year`
 > wird serverseitig aus `periodStart` abgeleitet (kein eigenes Eingabefeld), damit Jahr und
 > Zeitraum nie widerspruechlich gespeichert werden koennen.
+
+> **Migration `add_learning_materials`:** Fuegt das neue Modell `LearningMaterial` hinzu (mit
+> `guildId`/`classId`-Fremdschluesseln, Index auf `guildId, classId, category`) - rein additiv.
+> Die optionale Verknuepfung mit einer Pruefung oder einem Bericht (`linkedType`/`linkedId`) ist
+> bewusst **kein** DB-Fremdschluessel: eine Verknuepfung kann auf drei verschiedene Zieltabellen
+> (`Exam`, `DailyReport`, `WeeklyReport`) zeigen, was in Prisma nur ueber drei getrennte,
+> gleichzeitig vorhandene Nullable-Fremdschluessel-Spalten abgebildet werden koennte (polymorphe
+> Relationen werden nicht nativ unterstuetzt) - das haette drei zusaetzliche Rueckwaerts-Relationen
+> auf `Exam`/`DailyReport`/`WeeklyReport` erfordert, nur um ein optionales "Nice-to-have"-Feature
+> zu stuetzen. Stattdessen speichert `LearningMaterial` Typ und ID als einfache String-Spalten;
+> Existenz und Klassenzugehoerigkeit werden serverseitig in `learningMaterialService.ts` geprueft
+> (siehe Design-Entscheidungen im Abschnitt "Lernmaterial" unten) - konsistent mit dem Rest der
+> Architektur, die Geschaeftsregeln grundsaetzlich in der Service-Schicht durchsetzt, nicht per
+> DB-Constraint.
 
 ## Implementierte Kernfunktionen
 
@@ -599,6 +618,60 @@ Design-Entscheidungen:
   braeuchte, siehe Punkt 14 der Anforderung), sondern bleibt bei derselben DB-basierten Pruefung
   wie alle anderen klassenbezogenen Funktionen.
 
+### Lernmaterial
+
+Vierte klassenbezogene Fachfunktion, strukturell nach demselben Muster wie Pruefungen/Termine/
+Berichte aufgebaut. Beteiligte Bausteine:
+
+- `src/types/domain.ts::LEARNING_MATERIAL_CATEGORIES`/`LEARNING_MATERIAL_CATEGORY_LABELS` (neu) -
+  zentral definierte, leicht erweiterbare Kategorienliste (IT/Technik, Netzwerke, Programmierung,
+  Datenbanken, IT-Sicherheit, allgemeine Pruefungsvorbereitung), nach demselben Muster wie
+  `CLASS_NAME_LABELS`/`IT_SKILL_LABELS` - Emoji direkt im Label, keine zweite Zuordnung zu
+  pflegen. `LEARNING_MATERIAL_LINK_TYPES`/`_LABELS` beschreiben analog die drei moeglichen
+  Verknuepfungsziele (Pruefung, Tages-, Wochenbericht).
+- `src/repositories/learningMaterialRepository.ts` - reiner Datenzugriff nach demselben Muster wie
+  `examRepository.ts`: jede Einzelabfrage nach ID ist immer zusaetzlich nach `guildId` gescoped.
+  `listLearningMaterialsByClassId()` sortiert nach Kategorie dann Titel, damit die Anzeige
+  gruppiert und uebersichtlich bleibt.
+- `src/services/learningMaterialService.ts` - vier Funktionen
+  (`createLearningMaterialForClass()`, `updateLearningMaterialForClass()`,
+  `deleteLearningMaterialForClass()`, `listLearningMaterialsForClass()`), 1:1 nach dem etablierten
+  Muster: `assertClassManagementAccess()` fuer Verwaltungsaktionen (Klasse beim Bearbeiten/Loeschen
+  immer aus dem gespeicherten Datensatz aufgeloest, nie aus einem Aufrufer-Parameter),
+  `assertClassReadAccess()` fuer `listLearningMaterialsForClass()`. Zusaetzlich validiert
+  `validateCategory()` die Kategorie gegen `learningMaterialCategorySchema` und `resolveLink()`
+  eine optionale Verknuepfung: Typ und ID muessen gemeinsam angegeben werden, und der
+  referenzierte Datensatz (Pruefung/Tages-/Wochenbericht) muss existieren UND zur selben Klasse
+  gehoeren wie das Lernmaterial selbst - fail-closed gegen eine manipulierte Verknuepfungs-ID, die
+  sonst auf eine fremde Klasse verweisen koennte (Anforderung 4/6).
+- `src/bot/ui/learningMaterialMessage.ts::buildLearningMaterialListEmbed()` - Embed-Builder fuer
+  `/lernmaterial-anzeigen`, strukturell wie `classEventMessage.ts`/`reportMessage.ts`.
+- Commands (`src/bot/commands/klasse/`): `/lernmaterial-erstellen`, `/lernmaterial-bearbeiten`,
+  `/lernmaterial-loeschen` (alle KLASSENLEITUNG), `/lernmaterial-anzeigen` (VERIFIED). Der
+  optionale Discord-Datei-Anhang wird ueber `SlashCommandBuilder.addAttachmentOption()`
+  entgegengenommen; gespeichert werden nur die von Discord gelieferten Metadaten
+  (`attachment.url`/`.name`/`.contentType`) - die Datei selbst bleibt auf Discords CDN, der Bot
+  laedt oder speichert sie nicht selbst hoch.
+
+Design-Entscheidungen:
+
+- **Kein DB-Fremdschluessel fuer die optionale Verknuepfung.** Siehe Migrations-Hinweis im
+  Datenmodell-Abschnitt oben - `linkedType`/`linkedId` sind einfache String-Spalten, deren
+  Gueltigkeit (Existenz + Klassenzugehoerigkeit) `resolveLink()` bei jedem Schreibzugriff prueft.
+- **Anhang als Metadaten-Verweis, nicht als Datei-Kopie.** Der Bot laedt keine Datei-Inhalte
+  herunter oder speichert sie selbst - Discord haelt die Datei auf seinem eigenen CDN vor, das
+  Modell speichert nur URL/Name/Content-Type als Referenz. Das entspricht der Anforderung
+  "Discord attachment metadata" woertlich und vermeidet unnoetige Datenhaltung/Speicherlimits.
+- **Kategorie als feste Liste, nicht Freitext.** Ermoeglicht spaetere Filterung/Gruppierung
+  (bereits in der Sortierung von `listLearningMaterialsByClassId()` genutzt) und verhindert
+  Tippfehler-Varianten derselben Kategorie. `LEARNING_MATERIAL_CATEGORIES` ist die einzige
+  Quelle der Wahrheit - eine neue Kategorie hinzuzufuegen bedeutet eine Zeile in `domain.ts`.
+- **Verknuepfung ist einseitig, nicht bidirektional.** `Exam`/`DailyReport`/`WeeklyReport` wissen
+  nichts von verknuepftem Lernmaterial (keine Rueckwaerts-Relation) - wer von einer Pruefung aus
+  das verknuepfte Material finden will, muesste `LearningMaterial` nach `linkedType`/`linkedId`
+  filtern. Fuer den aktuellen Umfang (Material zeigt seine eigene Verknuepfung an) ausreichend;
+  eine Rueckwaerts-Abfrage waere eine kleine, spaeter ergaenzbare Erweiterung.
+
 ## Sicherheitsueberlegungen
 
 - Keine Zugangsdaten im Repository (`.env` ignoriert, nur `.env.example` mit Platzhaltern).
@@ -654,6 +727,12 @@ Design-Entscheidungen:
   Bearbeiten/Loeschen immer aus `report.classId` -> `getClassById()` auf, nie aus einem
   Aufrufer-Parameter. `berichtsheftService.ts` fuegt keine eigene Pruefung hinzu, sondern
   delegiert vollstaendig an die bereits authentifizierten Listenfunktionen der beiden Services.
+- Lernmaterial wendet dasselbe Fail-closed-Muster an (`material.classId` -> `getClassById()`) und
+  erweitert es um eine zusaetzliche Pruefung fuer die optionale Verknuepfung: `resolveLink()` in
+  `learningMaterialService.ts` akzeptiert eine Verknuepfungs-ID nur, wenn der referenzierte
+  Datensatz existiert UND `classId`-gleich mit dem Lernmaterial ist - eine manipulierte
+  Verknuepfungs-ID kann dadurch nie eine Verbindung zu einer fremden Klasse herstellen, selbst
+  wenn die ID selbst gueltig ist (gehoert nur zu einer anderen Klasse).
 
 ## Roadmap der Kernfunktionen
 
@@ -690,10 +769,10 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
     Abschnitt ["Berichtsheft, Tages- und Wochenberichte" im
     README](./README.md#berichtsheft-tages--und-wochenberichte) sowie "Berichtsheft, Tages- und
     Wochenberichte" oben. Kanal existiert bereits (`reportChannelId`).
-12. **Lernmaterial** - Kanal existiert bereits (`materialChannelId`). Naechster logischer Schritt:
-    kann `assertClassManagementAccess()`/`assertClassReadAccess()` sowie das Freitext-Referenz-
-    Muster aus `DailyReport.relatedMaterials` direkt wiederverwenden, sobald ein eigenes
-    Lernmaterial-Modell benoetigt wird.
+12. ~~**Lernmaterial**~~ - **umgesetzt.** Siehe Abschnitt
+    ["Lernmaterial" im README](./README.md#lernmaterial) sowie "Lernmaterial" oben. Kanal existiert
+    bereits (`materialChannelId`); die optionale Verknuepfung mit Pruefungen/Berichten nutzt
+    dasselbe Fail-closed-Prinzip wie alle anderen klassenbezogenen Funktionen.
 13. **Voice-Lerngruppen** - benoetigt zusaetzlichen Intent (`GuildVoiceStates` ist bereits aktiviert).
 14. **Moderation** - kann die bereits vergebenen Klassenleitungs-Overwrites (`ModerateMembers`,
     `MuteMembers`/`DeafenMembers`/`MoveMembers`) direkt nutzen.

@@ -115,3 +115,44 @@ export const CLASS_NAME_LABELS: Record<ClassName, string> = {
   B: '🅱️ Klasse B',
   C: '🆑 Klasse C',
 };
+
+/**
+ * Kategorien fuer Lernmaterial - zentral definiert und leicht um weitere
+ * Kategorien erweiterbar (siehe learningMaterialService.ts). Bewusst als
+ * feste Liste statt Freitext, damit Material spaeter zuverlaessig gefiltert/
+ * gruppiert werden kann.
+ */
+export const LEARNING_MATERIAL_CATEGORIES = [
+  'IT_TECHNIK',
+  'NETZWERKE',
+  'PROGRAMMIERUNG',
+  'DATENBANKEN',
+  'IT_SICHERHEIT',
+  'PRUEFUNGSVORBEREITUNG',
+] as const;
+export const learningMaterialCategorySchema = z.enum(LEARNING_MATERIAL_CATEGORIES);
+export type LearningMaterialCategory = z.infer<typeof learningMaterialCategorySchema>;
+
+export const LEARNING_MATERIAL_CATEGORY_LABELS: Record<LearningMaterialCategory, string> = {
+  IT_TECHNIK: '🖥️ IT / Technik',
+  NETZWERKE: '🌐 Netzwerke',
+  PROGRAMMIERUNG: '💻 Programmierung',
+  DATENBANKEN: '🗄️ Datenbanken',
+  IT_SICHERHEIT: '🔐 IT-Sicherheit',
+  PRUEFUNGSVORBEREITUNG: '🎓 Allgemeine Pruefungsvorbereitung',
+};
+
+/**
+ * Optionale Verknuepfung eines Lernmaterials mit einer Pruefung oder einem
+ * Tages-/Wochenbericht DERSELBEN Klasse (siehe learningMaterialService.ts fuer
+ * die serverseitige Existenz-/Klassenzugehoerigkeitspruefung).
+ */
+export const LEARNING_MATERIAL_LINK_TYPES = ['EXAM', 'DAILY_REPORT', 'WEEKLY_REPORT'] as const;
+export const learningMaterialLinkTypeSchema = z.enum(LEARNING_MATERIAL_LINK_TYPES);
+export type LearningMaterialLinkType = z.infer<typeof learningMaterialLinkTypeSchema>;
+
+export const LEARNING_MATERIAL_LINK_TYPE_LABELS: Record<LearningMaterialLinkType, string> = {
+  EXAM: 'Pruefung',
+  DAILY_REPORT: 'Tagesbericht',
+  WEEKLY_REPORT: 'Wochenbericht',
+};
