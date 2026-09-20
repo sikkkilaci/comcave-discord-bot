@@ -1,4 +1,4 @@
-import type { GuildConfig, LearningMaterial } from '@prisma/client';
+import type { Exam, GuildConfig, LearningMaterial } from '@prisma/client';
 import type { GuildMember } from 'discord.js';
 import { getClassByName, getClassById } from '../repositories/classRepository.js';
 import { getMemberWithClass } from '../repositories/memberRepository.js';
@@ -10,6 +10,7 @@ import {
   deleteLearningMaterial as deleteLearningMaterialRow,
   getLearningMaterialById,
   listLearningMaterialsByClassId,
+  listLearningMaterialsLinkedTo,
   updateLearningMaterial as updateLearningMaterialRow,
   type LearningMaterialUpdate,
 } from '../repositories/learningMaterialRepository.js';
@@ -318,4 +319,42 @@ export async function listLearningMaterialsForClass(
 
   const materials = await listLearningMaterialsByClassId(klasse.id);
   return { className: targetName, materials };
+}
+
+export interface LearningMaterialsForExamResult {
+  exam: Exam;
+  className: ClassName;
+  materials: LearningMaterial[];
+}
+
+/**
+ * Umgekehrte Abfrage zur Verknuepfung aus createLearningMaterialForClass():
+ * findet alles Lernmaterial, das mit einer bestimmten Pruefung verknuepft ist.
+ * Die Pruefung wird immer per `guildConfig.id` aufgeloest (getExamById()) -
+ * eine manipulierte Pruefungs-ID aus einer fremden Guild liefert daher nie
+ * einen Treffer. Die Leseberechtigung wird wie bei listLearningMaterialsForClass()
+ * ueber assertClassReadAccess() anhand der Klasse geprueft, zu der die
+ * Pruefung tatsaechlich gehoert (`exam.classId` -> getClassById()) - keine
+ * zweite, parallele Berechtigungslogik.
+ */
+export async function listLearningMaterialsLinkedToExam(
+  guildConfig: GuildConfig,
+  member: GuildMember,
+  examId: string,
+): Promise<LearningMaterialsForExamResult> {
+  const exam = await getExamById(guildConfig.id, examId);
+  if (!exam) {
+    throw new NotFoundError('Diese Pruefung wurde nicht gefunden.');
+  }
+
+  const klasse = await getClassById(guildConfig.id, exam.classId);
+  if (!klasse) {
+    throw new NotFoundError('Die zugehoerige Klasse wurde nicht gefunden.');
+  }
+
+  const memberRow = await getMemberWithClass(guildConfig.id, member.id);
+  assertClassReadAccess(member, guildConfig, klasse, memberRow?.classId ?? null);
+
+  const materials = await listLearningMaterialsLinkedTo(klasse.id, 'EXAM', examId);
+  return { exam, className: klasse.name as ClassName, materials };
 }

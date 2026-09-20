@@ -207,6 +207,10 @@ Vierte klassenbezogene Fachfunktion nach demselben Muster - strukturiertes Lernm
 - `/lernmaterial-bearbeiten material-id:<...> [titel:<...>] [beschreibung:<...>] [fach:<...>] [kategorie:<...>] [url:<...>] [datei:<Anhang>] [verknuepfung-typ:<...>] [verknuepfung-id:<...>]`
 - `/lernmaterial-loeschen material-id:<...>`
 - `/lernmaterial-anzeigen [klasse:<A|B|C>]` - ohne Angabe wird die eigene Klasse angezeigt, gruppiert nach Kategorie
+- `/pruefung-lernmaterial pruefung-id:<...>` - umgekehrte Abfrage: zeigt alles Lernmaterial, das mit
+  einer bestimmten Pruefung verknuepft ist. Dieselbe Leseberechtigung wie `/lernmaterial-anzeigen`
+  (`assertClassReadAccess()` anhand der Klasse, zu der die Pruefung tatsaechlich gehoert) - eine
+  manipulierte oder fremde Pruefungs-ID liefert nie Daten einer fremden Klasse/Guild.
 
 **Kategorien** (zentral in `src/types/domain.ts` definiert, leicht erweiterbar):
 🖥️ IT / Technik, 🌐 Netzwerke, 💻 Programmierung, 🗄️ Datenbanken, 🔐 IT-Sicherheit,
@@ -222,6 +226,42 @@ fuer Admin oder die Klassenleitung der betroffenen Klasse (`assertClassManagemen
 beim Bearbeiten/Loeschen immer aus dem gespeicherten Datensatz aufgeloest), Lesen fuer jedes
 verifizierte Mitglied der eigenen Klasse (`assertClassReadAccess()`). Protokolliert werden
 `learningMaterial.create`/`.update`/`.delete`.
+
+## Admin-/Moderator-Rollen
+
+`adminRoleId`/`moderatorRoleId` (siehe `GuildConfig` in `prisma/schema.prisma`) waren bereits Teil
+des Datenmodells und wurden in `/konfiguration` angezeigt, konnten aber ueber keinen Befehl gesetzt
+werden - `isServerAdmin()` (`src/permissions/checkPermission.ts`) wertet `adminRoleId` bereits aktiv
+aus, die Rolle liess sich in der Praxis aber gar nicht konfigurieren.
+
+- `/setup-admin-rollen admin-rolle:<Rolle> [moderator-rolle:<Rolle>]` (nur Admins) - setzt
+  `adminRoleId` (und optional `moderatorRoleId`). Wird `moderator-rolle` weggelassen, bleibt ein
+  bereits gesetzter Wert unveraendert (wie beim Kanal-Parameter von `/setup-verifizierung`).
+- Beide Rollen werden wie Verifiziert-/Klassenrollen gegen Administrator-Rechte geprueft
+  (`roleHasAdministrator()`) und bei einem Treffer abgelehnt - eine Rolle, die den Bot zum
+  Admin macht, darf nicht gleichzeitig eine zweite, unkontrollierte Rechtequelle sein.
+- **`moderatorRoleId` ist aktuell reine Konfiguration ohne Wirkung.** Es gibt noch keine
+  `PermissionLevel.MODERATOR` und keine Moderationsfunktionen (Kick/Mute/Warn o.ae. existieren
+  nicht) - das Feld ist im Schema als Vorbereitung fuer eine spaetere Moderationsfunktion angelegt
+  (siehe Schema-Kommentar), wird von `checkPermission.ts` aber bewusst noch nirgends ausgewertet.
+  Ein Mitglied mit ausschliesslich dieser Rolle hat dieselben Rechte wie jedes andere verifizierte
+  Mitglied.
+- Ohne konfigurierte `adminRoleId` bleibt die Rolle als Admin-Quelle inaktiv (fail-closed) - globale
+  Admin-Rechte kommen dann weiterhin nur ueber den Server-Owner oder echte Discord-"Administrator"-
+  Berechtigung zustande.
+
+## Audit-Log-Anzeige
+
+- `/audit-log [seite:<Zahl>] [aktion:<...>] [nutzer:<@Mitglied>]` (nur globale Admins) - zeigt das
+  Audit-Log dieses Servers, neueste Eintraege zuerst, paginiert zu 10 Eintraegen pro Seite. Optional
+  nach exakter Aktion (z. B. `class.setup`) und/oder ausfuehrendem Mitglied filterbar.
+- Zugriff ist strikt auf globale Admins beschraenkt (`isServerAdmin()`, sowohl ueber
+  `permissionLevel: ADMIN` am Command als auch zusaetzlich in `auditLogService.ts` selbst geprueft)
+  - Klassenleitung hat **keinen** Zugriff, auch nicht auf Eintraege der eigenen Klasse.
+  - Jede Anzeige ist strikt auf die aktuelle Guild beschraenkt (`guildConfig.id`), es werden nie
+    Eintraege einer anderen Guild angezeigt.
+  - Zeigt pro Eintrag Zeitpunkt, Aktion, ausfuehrenden und (falls vorhanden) betroffenen Nutzer,
+    die betroffene Klasse (best-effort aus den Metadaten ausgelesen) sowie die restlichen Metadaten.
 
 ## Voraussetzungen
 
@@ -393,3 +433,16 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   verknuepfter Tages-/Wochenbericht geloescht, wird die Verknuepfung (`linkedType`/`linkedId`) auf
   jedem betroffenen Lernmaterial automatisch aufgeloest, damit keine verwaisten Verweise stehen
   bleiben (`clearLearningMaterialLinksTo()`).
+- `/pruefung-lernmaterial` (Reverse-Lookup) loest die Pruefung immer per `guildConfig.id` auf
+  (`getExamById()`) und prueft den Lesezugriff ueber dieselbe `assertClassReadAccess()`-Funktion wie
+  `/lernmaterial-anzeigen` - eine manipulierte oder aus einer fremden Guild stammende Pruefungs-ID
+  liefert nie Treffer.
+- `/setup-admin-rollen` prueft beide Rollen (Admin und optional Moderator) gegen Administrator-
+  Rechte (`roleHasAdministrator()`) und lehnt sie in dem Fall ab - dasselbe Muster wie bei
+  `/setup-klassen`/`/setup-verifizierung`. `moderatorRoleId` ist aktuell reine Konfiguration ohne
+  Wirkung (siehe Abschnitt "Admin-/Moderator-Rollen" oben) und verleiht daher auch keine
+  zusaetzlichen Rechte.
+- `/audit-log` ist ausschliesslich globalen Admins vorbehalten (`isServerAdmin()`, sowohl per
+  `permissionLevel: ADMIN` am Command als auch zusaetzlich in `auditLogService.ts` selbst geprueft) -
+  Klassenleitung und normale Mitglieder erhalten keinen Zugriff, auch nicht auf Eintraege der
+  eigenen Klasse. Alle Abfragen sind strikt nach `guildConfig.id` gescoped.

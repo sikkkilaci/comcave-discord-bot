@@ -14,6 +14,7 @@ import {
   createLearningMaterialForClass,
   deleteLearningMaterialForClass,
   listLearningMaterialsForClass,
+  listLearningMaterialsLinkedToExam,
   updateLearningMaterialForClass,
 } from '../src/services/learningMaterialService.js';
 import { getLearningMaterialById } from '../src/repositories/learningMaterialRepository.js';
@@ -463,6 +464,134 @@ describe('learningMaterialService', () => {
       const reloaded = await getLearningMaterialById(guildId, material.id);
       expect(reloaded?.linkedType).toBeNull();
       expect(reloaded?.linkedId).toBeNull();
+    });
+  });
+
+  describe('listLearningMaterialsLinkedToExam - Reverse-Lookup', () => {
+    it('Mitglied der eigenen Klasse sieht das mit einer Pruefung verknuepfte Lernmaterial', async () => {
+      const { guildId, guildConfig, classA, leadRoleA } = await setupGuildWithClassesAB();
+      const leadA = fakeMember({ id: 'lead-a', roleIds: [leadRoleA] });
+      const exam = await createExamForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { fach: 'Mathe', beschreibung: 'Test', datum: '01.01.2027', uhrzeit: '10:00' },
+        leadA.id,
+      );
+      await createLearningMaterialForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { ...VALID_INPUT, verknuepfungTyp: 'EXAM', verknuepfungId: exam.id },
+        leadA.id,
+      );
+
+      const member = fakeMember({ id: 'member-1' });
+      await setMemberClass(guildId, member.id, classA.id);
+
+      const { className, materials } = await listLearningMaterialsLinkedToExam(
+        guildConfig,
+        member,
+        exam.id,
+      );
+
+      expect(className).toBe('A');
+      expect(materials).toHaveLength(1);
+      expect(materials[0]?.title).toBe(VALID_INPUT.titel);
+    });
+
+    it('gibt ein leeres Array zurueck, wenn keine Lernmaterialien verknuepft sind', async () => {
+      const { guildConfig, leadRoleA } = await setupGuildWithClassesAB();
+      const leadA = fakeMember({ id: 'lead-a', roleIds: [leadRoleA] });
+      const exam = await createExamForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { fach: 'Mathe', beschreibung: 'Test', datum: '01.01.2027', uhrzeit: '10:00' },
+        leadA.id,
+      );
+
+      const { materials } = await listLearningMaterialsLinkedToExam(guildConfig, leadA, exam.id);
+
+      expect(materials).toHaveLength(0);
+    });
+
+    it('gibt mehrere verknuepfte Lernmaterialien zurueck', async () => {
+      const { guildConfig, leadRoleA } = await setupGuildWithClassesAB();
+      const leadA = fakeMember({ id: 'lead-a', roleIds: [leadRoleA] });
+      const exam = await createExamForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { fach: 'Mathe', beschreibung: 'Test', datum: '01.01.2027', uhrzeit: '10:00' },
+        leadA.id,
+      );
+      await createLearningMaterialForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { ...VALID_INPUT, titel: 'Material 1', verknuepfungTyp: 'EXAM', verknuepfungId: exam.id },
+        leadA.id,
+      );
+      await createLearningMaterialForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { ...VALID_INPUT, titel: 'Material 2', verknuepfungTyp: 'EXAM', verknuepfungId: exam.id },
+        leadA.id,
+      );
+
+      const { materials } = await listLearningMaterialsLinkedToExam(guildConfig, leadA, exam.id);
+
+      expect(materials).toHaveLength(2);
+      expect(materials.map((m) => m.title).sort()).toEqual(['Material 1', 'Material 2']);
+    });
+
+    it('verweigert einem Mitglied einer FREMDEN Klasse den Zugriff auf die Verknuepfung', async () => {
+      const { guildConfig, leadRoleA, classB } = await setupGuildWithClassesAB();
+      const leadA = fakeMember({ id: 'lead-a', roleIds: [leadRoleA] });
+      const exam = await createExamForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { fach: 'Mathe', beschreibung: 'Test', datum: '01.01.2027', uhrzeit: '10:00' },
+        leadA.id,
+      );
+
+      const memberOfB = fakeMember({ id: 'member-b' });
+      await setMemberClass(guildConfig.id, memberOfB.id, classB.id);
+
+      await expect(
+        listLearningMaterialsLinkedToExam(guildConfig, memberOfB, exam.id),
+      ).rejects.toBeInstanceOf(PermissionError);
+    });
+
+    it('lehnt eine manipulierte/unbekannte Pruefungs-ID mit NotFoundError ab', async () => {
+      const { guildConfig } = await setupGuildWithClassesAB();
+      const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
+
+      await expect(
+        listLearningMaterialsLinkedToExam(guildConfig, admin, 'does-not-exist'),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it('lehnt eine Pruefungs-ID aus einer FREMDEN Guild ab (Guild-Isolation)', async () => {
+      const { guildConfig: guildConfigA, leadRoleA } = await setupGuildWithClassesAB();
+      const leadA = fakeMember({ id: 'lead-a', roleIds: [leadRoleA] });
+      const examOfGuildA = await createExamForClass(
+        guildConfigA,
+        leadA,
+        'A',
+        { fach: 'Mathe', beschreibung: 'Test', datum: '01.01.2027', uhrzeit: '10:00' },
+        leadA.id,
+      );
+
+      const { guildConfig: guildConfigB } = await setupGuildWithClassesAB();
+      const adminOfB = fakeMember({ id: 'admin-b', isAdministrator: true });
+
+      await expect(
+        listLearningMaterialsLinkedToExam(guildConfigB, adminOfB, examOfGuildA.id),
+      ).rejects.toBeInstanceOf(NotFoundError);
     });
   });
 

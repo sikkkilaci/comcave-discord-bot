@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
-import { listAuditEvents, logAuditEvent } from '../src/repositories/auditLogRepository.js';
+import {
+  countAuditEvents,
+  listAuditEvents,
+  logAuditEvent,
+} from '../src/repositories/auditLogRepository.js';
 
 function uniqueGuildId(): string {
   return `guild-${randomUUID()}`;
@@ -90,5 +94,66 @@ describe('auditLogRepository', () => {
     const entries = await listAuditEvents(guildId, { targetDiscordId: 'x' });
 
     expect(entries.map((entry) => entry.action)).toEqual(['member.reject', 'member.verify']);
+  });
+
+  it('filtert nach actorDiscordId und action', async () => {
+    const guildId = uniqueGuildId();
+    await getOrCreateGuildConfig(guildId);
+
+    await logAuditEvent({ guildId, actorDiscordId: 'actor-1', action: 'class.setup' });
+    await logAuditEvent({ guildId, actorDiscordId: 'actor-2', action: 'class.setup' });
+    await logAuditEvent({ guildId, actorDiscordId: 'actor-1', action: 'verification.setup' });
+
+    const byActor = await listAuditEvents(guildId, { actorDiscordId: 'actor-1' });
+    expect(byActor).toHaveLength(2);
+
+    const byAction = await listAuditEvents(guildId, { action: 'class.setup' });
+    expect(byAction).toHaveLength(2);
+
+    const byBoth = await listAuditEvents(guildId, {
+      actorDiscordId: 'actor-1',
+      action: 'class.setup',
+    });
+    expect(byBoth).toHaveLength(1);
+  });
+
+  it('unterstuetzt Paginierung ueber take/skip', async () => {
+    const guildId = uniqueGuildId();
+    await getOrCreateGuildConfig(guildId);
+
+    for (let i = 0; i < 5; i += 1) {
+      await logAuditEvent({ guildId, actorDiscordId: 'actor-1', action: `event.${i}` });
+    }
+
+    const firstPage = await listAuditEvents(guildId, { take: 2, skip: 0 });
+    const secondPage = await listAuditEvents(guildId, { take: 2, skip: 2 });
+
+    expect(firstPage).toHaveLength(2);
+    expect(secondPage).toHaveLength(2);
+    expect(firstPage.map((e) => e.action)).not.toEqual(secondPage.map((e) => e.action));
+  });
+
+  it('countAuditEvents zaehlt mit denselben Filtern wie listAuditEvents', async () => {
+    const guildId = uniqueGuildId();
+    await getOrCreateGuildConfig(guildId);
+
+    await logAuditEvent({ guildId, actorDiscordId: 'actor-1', action: 'class.setup' });
+    await logAuditEvent({ guildId, actorDiscordId: 'actor-2', action: 'class.setup' });
+
+    expect(await countAuditEvents(guildId)).toBe(2);
+    expect(await countAuditEvents(guildId, { actorDiscordId: 'actor-1' })).toBe(1);
+  });
+
+  it('vermischt keine Eintraege verschiedener Guilds (Guild-Isolation)', async () => {
+    const guildIdA = uniqueGuildId();
+    const guildIdB = uniqueGuildId();
+    await getOrCreateGuildConfig(guildIdA);
+    await getOrCreateGuildConfig(guildIdB);
+
+    await logAuditEvent({ guildId: guildIdA, actorDiscordId: 'actor-1', action: 'class.setup' });
+    await logAuditEvent({ guildId: guildIdB, actorDiscordId: 'actor-1', action: 'class.setup' });
+
+    expect(await countAuditEvents(guildIdA)).toBe(1);
+    expect(await countAuditEvents(guildIdB)).toBe(1);
   });
 });

@@ -632,26 +632,36 @@ Berichte aufgebaut. Beteiligte Bausteine:
 - `src/repositories/learningMaterialRepository.ts` - reiner Datenzugriff nach demselben Muster wie
   `examRepository.ts`: jede Einzelabfrage nach ID ist immer zusaetzlich nach `guildId` gescoped.
   `listLearningMaterialsByClassId()` sortiert nach Kategorie dann Titel, damit die Anzeige
-  gruppiert und uebersichtlich bleibt.
-- `src/services/learningMaterialService.ts` - vier Funktionen
+  gruppiert und uebersichtlich bleibt. `listLearningMaterialsLinkedTo(classId, linkedType, linkedId)`
+  ist die umgekehrte Abfrage zu `resolveLink()` (siehe unten) - zusaetzlich zu `linkedType`/
+  `linkedId` immer auch nach `classId` gescoped, obwohl eine cuid bereits eindeutig ist (dieselbe
+  defensive Doppel-Absicherung wie beim Anlegen der Verknuepfung).
+- `src/services/learningMaterialService.ts` - fuenf Funktionen
   (`createLearningMaterialForClass()`, `updateLearningMaterialForClass()`,
-  `deleteLearningMaterialForClass()`, `listLearningMaterialsForClass()`), 1:1 nach dem etablierten
-  Muster: `assertClassManagementAccess()` fuer Verwaltungsaktionen (Klasse beim Bearbeiten/Loeschen
-  immer aus dem gespeicherten Datensatz aufgeloest, nie aus einem Aufrufer-Parameter),
-  `assertClassReadAccess()` fuer `listLearningMaterialsForClass()`. Zusaetzlich validiert
+  `deleteLearningMaterialForClass()`, `listLearningMaterialsForClass()`,
+  `listLearningMaterialsLinkedToExam()`), 1:1 nach dem etablierten Muster:
+  `assertClassManagementAccess()` fuer Verwaltungsaktionen (Klasse beim Bearbeiten/Loeschen immer
+  aus dem gespeicherten Datensatz aufgeloest, nie aus einem Aufrufer-Parameter),
+  `assertClassReadAccess()` fuer die beiden Lesefunktionen. Zusaetzlich validiert
   `validateCategory()` die Kategorie gegen `learningMaterialCategorySchema` und `resolveLink()`
   eine optionale Verknuepfung: Typ und ID muessen gemeinsam angegeben werden, und der
   referenzierte Datensatz (Pruefung/Tages-/Wochenbericht) muss existieren UND zur selben Klasse
   gehoeren wie das Lernmaterial selbst - fail-closed gegen eine manipulierte Verknuepfungs-ID, die
   sonst auf eine fremde Klasse verweisen koennte (Anforderung 4/6).
+  `listLearningMaterialsLinkedToExam()` loest die Pruefung immer per `guildConfig.id` auf
+  (`getExamById()`), sodass eine Pruefungs-ID aus einer fremden Guild nie einen Treffer liefert,
+  und prueft die Leseberechtigung anhand der Klasse, zu der die Pruefung tatsaechlich gehoert -
+  keine zweite, parallele Berechtigungslogik.
 - `src/bot/ui/learningMaterialMessage.ts::buildLearningMaterialListEmbed()` - Embed-Builder fuer
-  `/lernmaterial-anzeigen`, strukturell wie `classEventMessage.ts`/`reportMessage.ts`.
+  `/lernmaterial-anzeigen` UND `/pruefung-lernmaterial` (Titel wird vom Aufrufer per `.setTitle()`
+  ueberschrieben), strukturell wie `classEventMessage.ts`/`reportMessage.ts`.
 - Commands (`src/bot/commands/klasse/`): `/lernmaterial-erstellen`, `/lernmaterial-bearbeiten`,
   `/lernmaterial-loeschen` (alle KLASSENLEITUNG), `/lernmaterial-anzeigen` (VERIFIED). Der
   optionale Discord-Datei-Anhang wird ueber `SlashCommandBuilder.addAttachmentOption()`
   entgegengenommen; gespeichert werden nur die von Discord gelieferten Metadaten
   (`attachment.url`/`.name`/`.contentType`) - die Datei selbst bleibt auf Discords CDN, der Bot
-  laedt oder speichert sie nicht selbst hoch.
+  laedt oder speichert sie nicht selbst hoch. `/pruefung-lernmaterial` (VERIFIED) ist die
+  Reverse-Lookup-Abfrage: Lernmaterial anhand einer Pruefungs-ID finden statt umgekehrt.
 
 Design-Entscheidungen:
 
@@ -671,11 +681,57 @@ Design-Entscheidungen:
   (bereits in der Sortierung von `listLearningMaterialsByClassId()` genutzt) und verhindert
   Tippfehler-Varianten derselben Kategorie. `LEARNING_MATERIAL_CATEGORIES` ist die einzige
   Quelle der Wahrheit - eine neue Kategorie hinzuzufuegen bedeutet eine Zeile in `domain.ts`.
-- **Verknuepfung ist einseitig, nicht bidirektional.** `Exam`/`DailyReport`/`WeeklyReport` wissen
-  nichts von verknuepftem Lernmaterial (keine Rueckwaerts-Relation) - wer von einer Pruefung aus
-  das verknuepfte Material finden will, muesste `LearningMaterial` nach `linkedType`/`linkedId`
-  filtern. Fuer den aktuellen Umfang (Material zeigt seine eigene Verknuepfung an) ausreichend;
-  eine Rueckwaerts-Abfrage waere eine kleine, spaeter ergaenzbare Erweiterung.
+- **Verknuepfung ist datenbankseitig einseitig, aber in beide Richtungen abfragbar.** `Exam`/
+  `DailyReport`/`WeeklyReport` wissen selbst weiterhin nichts von verknuepftem Lernmaterial (keine
+  Rueckwaerts-Relation im Schema) - die Rueckwaerts-Abfrage laeuft stattdessen ueber
+  `listLearningMaterialsLinkedTo()`/`listLearningMaterialsLinkedToExam()`, die `LearningMaterial`
+  nach `linkedType`/`linkedId` filtern (`/pruefung-lernmaterial`). Kein neuer Fremdschluessel/keine
+  neue Relation noetig, da die vorhandene `resolveLink()`-Validierung bereits sicherstellt, dass
+  jede gespeicherte Verknuepfung gueltig und klassenzugehoerig ist.
+
+### Admin-/Moderator-Rollen
+
+`GuildConfig.adminRoleId`/`moderatorRoleId` waren von Anfang an Teil des Schemas ("Rollen-IDs fuer
+das Berechtigungssystem", siehe Datenmodell-Abschnitt) und `isServerAdmin()`
+(`src/permissions/checkPermission.ts`) wertet `adminRoleId` bereits seit dem Permission-Grundgeruest
+aktiv aus. Es gab jedoch **keinen Befehl, der diese Felder tatsaechlich setzen konnte** -
+`/konfiguration` zeigte sie nur an. Das Review hat diese Luecke identifiziert und geschlossen:
+
+- `src/services/guildConfigService.ts::configureAdminRoles()` - neue Service-Funktion, die
+  `adminRoleId` (erforderlich) und optional `moderatorRoleId` setzt. Beide Rollen werden vor dem
+  Speichern gegen `roleHasAdministrator()` geprueft (dasselbe Muster wie bei Verifiziert-/
+  Klassenrollen) und bei einem Treffer mit `ValidationError` abgelehnt, bevor irgendetwas
+  geschrieben wird. Schreibt einen `admin.roles.setup`-Audit-Log-Eintrag.
+- `/setup-admin-rollen` (`src/bot/commands/admin/setupAdminRollen.ts`, ADMIN) - duenner
+  Command-Wrapper um `configureAdminRoles()`. Wird `moderator-rolle` nicht angegeben, bleibt ein
+  bereits gesetzter Wert unveraendert (`input.moderatorRole !== undefined`-Unterscheidung).
+- **Wichtige Klarstellung zu `moderatorRoleId`:** Das Feld ist jetzt konfigurierbar, aber
+  `checkPermission.ts` wertet es weiterhin nirgends aus - es gibt keine `PermissionLevel.MODERATOR`
+  und keine Moderationsfunktionen (Kick/Mute/Warn), die eine solche Stufe brauchen wuerden. Das
+  Feld wurde bewusst NICHT mit erfundener Moderationslogik verknuepft, um kein neues, ungenutztes
+  Berechtigungssystem parallel zum bestehenden aufzubauen - es bleibt fuer eine spaetere
+  Moderationsfunktion reserviert (vgl. Schema-Kommentar "Verifizierung, Onboarding, Klassen,
+  Klassenleitung, Berichte, Moderation, Logging"). Ein Mitglied mit ausschliesslich der
+  Moderator-Rolle hat aktuell exakt dieselben Rechte wie jedes andere verifizierte Mitglied.
+
+### Audit-Log-Anzeige
+
+Der Audit-Log-Repository-Layer (`src/repositories/auditLogRepository.ts`) existierte von Anfang an
+(`logAuditEvent()`/`listAuditEvents()`), es gab aber keinen Weg, die gesammelten Eintraege
+tatsaechlich einzusehen - nur direkter Datenbankzugriff. Das Review hat das geschlossen:
+
+- `listAuditEvents()`/neu `countAuditEvents()` wurden um optionale `actorDiscordId`-/`action`-Filter
+  sowie `take`/`skip` fuer Paginierung erweitert (rueckwaertskompatibel - bestehende Aufrufe mit nur
+  `targetDiscordId` funktionieren unveraendert weiter).
+- `src/services/auditLogService.ts::getAuditLogPage()` - liefert eine Seite zu 10 Eintraegen,
+  neueste zuerst. Prueft **explizit in der Service-Schicht** `isServerAdmin()`, nicht nur ueber
+  `permissionLevel: ADMIN` am Command - dieselbe zentrale Funktion wie ueberall sonst, keine zweite
+  Berechtigungslogik, aber unabhaengig von der Command-Anbindung testbar und durchsetzbar.
+  Klassenleitung hat **keinen** erweiterten Zugriff, auch nicht auf Eintraege der eigenen Klasse.
+- `src/bot/ui/auditLogMessage.ts::buildAuditLogEmbed()` - liest die betroffene Klasse best-effort
+  aus dem `className`-Feld der `metadata`-Spalte aus (das nahezu jeder klassenbezogene Audit-Log-
+  Eintrag im Projekt bereits mitfuehrt), statt eine neue Spalte oder Relation dafuer anzulegen.
+- `/audit-log seite:<...> aktion:<...> nutzer:<...>` (`src/bot/commands/admin/auditLog.ts`, ADMIN).
 
 ## Sicherheitsueberlegungen
 
@@ -780,8 +836,14 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
     dasselbe Fail-closed-Prinzip wie alle anderen klassenbezogenen Funktionen.
 13. **Voice-Lerngruppen** - benoetigt zusaetzlichen Intent (`GuildVoiceStates` ist bereits aktiviert).
 14. **Moderation** - kann die bereits vergebenen Klassenleitungs-Overwrites (`ModerateMembers`,
-    `MuteMembers`/`DeafenMembers`/`MoveMembers`) direkt nutzen.
-15. **Logging** - baut auf `AuditLogEntry` auf.
+    `MuteMembers`/`DeafenMembers`/`MoveMembers`) direkt nutzen. `GuildConfig.moderatorRoleId` ist
+    seit dem Sicherheits-Review ueber `/setup-admin-rollen` konfigurierbar (siehe
+    "Admin-/Moderator-Rollen" oben), aber bewusst noch ohne Wirkung - eine kuenftige
+    Moderationsfunktion braucht dafuer noch eine eigene `PermissionLevel.MODERATOR`-Stufe in
+    `src/permissions/`.
+15. ~~**Logging/Audit-Log-Anzeige**~~ - **umgesetzt** fuer den Lesezugriff. `AuditLogEntry` wurde
+    von Anfang an bei jeder relevanten Aktion geschrieben; `/audit-log` (siehe
+    "Audit-Log-Anzeige" oben) macht die gesammelten Eintraege jetzt fuer globale Admins einsehbar.
 16. **Weitere Admin-Befehle**
 
 Jede dieser Funktionen wird als eigener, in sich getesteter Arbeitsschritt umgesetzt, um das

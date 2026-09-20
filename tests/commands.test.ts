@@ -40,6 +40,9 @@ describe('commandLoader', () => {
       'lernmaterial-bearbeiten': PermissionLevel.KLASSENLEITUNG,
       'lernmaterial-loeschen': PermissionLevel.KLASSENLEITUNG,
       'lernmaterial-anzeigen': PermissionLevel.VERIFIED,
+      'pruefung-lernmaterial': PermissionLevel.VERIFIED,
+      'setup-admin-rollen': PermissionLevel.ADMIN,
+      'audit-log': PermissionLevel.ADMIN,
     };
 
     for (const [name, level] of Object.entries(expected)) {

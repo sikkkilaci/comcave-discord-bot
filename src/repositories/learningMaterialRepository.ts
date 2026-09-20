@@ -67,6 +67,25 @@ export async function listLearningMaterialsByClassId(classId: string): Promise<L
 }
 
 /**
+ * Umgekehrte Abfrage zu resolveLink() in learningMaterialService.ts: findet
+ * alles Lernmaterial, das mit einem bestimmten Datensatz (Pruefung/Tages-
+ * /Wochenbericht) verknuepft ist. Zusaetzlich zu `linkedType`/`linkedId` immer
+ * mit `classId` gescoped, obwohl eine cuid bereits eindeutig ist - dieselbe
+ * defensive Doppel-Absicherung wie beim Anlegen der Verknuepfung selbst, statt
+ * sich allein auf die Eindeutigkeit der ID zu verlassen.
+ */
+export async function listLearningMaterialsLinkedTo(
+  classId: string,
+  linkedType: string,
+  linkedId: string,
+): Promise<LearningMaterial[]> {
+  return prisma.learningMaterial.findMany({
+    where: { classId, linkedType, linkedId },
+    orderBy: [{ category: 'asc' }, { title: 'asc' }],
+  });
+}
+
+/**
  * Loest die Verknuepfung aller Lernmaterialien, die auf `linkedId` verweisen.
  * linkedType/linkedId sind bewusst kein DB-Fremdschluessel (Pruefung/Tages-/
  * Wochenbericht ueber ein einzelnes Feld statt drei nullable Relationen) -
