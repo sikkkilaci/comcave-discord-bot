@@ -19,6 +19,14 @@ describe('commandLoader', () => {
       'setup-klassenbereiche': PermissionLevel.KLASSENLEITUNG,
       'setup-klassenleitung': PermissionLevel.ADMIN,
       'entferne-klassenleitung': PermissionLevel.ADMIN,
+      'pruefung-erstellen': PermissionLevel.KLASSENLEITUNG,
+      'pruefung-bearbeiten': PermissionLevel.KLASSENLEITUNG,
+      'pruefung-loeschen': PermissionLevel.KLASSENLEITUNG,
+      'pruefungen-anzeigen': PermissionLevel.VERIFIED,
+      'termin-erstellen': PermissionLevel.KLASSENLEITUNG,
+      'termin-bearbeiten': PermissionLevel.KLASSENLEITUNG,
+      'termin-loeschen': PermissionLevel.KLASSENLEITUNG,
+      'termine-anzeigen': PermissionLevel.VERIFIED,
     };
 
     for (const [name, level] of Object.entries(expected)) {

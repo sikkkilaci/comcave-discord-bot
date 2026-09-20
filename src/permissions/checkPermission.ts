@@ -60,6 +60,30 @@ export function assertClassManagementAccess(
 }
 
 /**
+ * Zentrale Zugriffspruefung zum **Lesen** klassenbezogener Informationen
+ * (z. B. Pruefungen/Termine anzeigen): erlaubt sind Admin, die Klassenleitung
+ * dieser Klasse (dieselben Primitiven wie assertClassManagementAccess()) ODER
+ * ein Mitglied, das laut Datenbank aktuell dieser Klasse zugeordnet ist
+ * (`ownClassId`). Absichtlich keine zweite, parallele Berechtigungslogik -
+ * lediglich eine zusaetzliche erlaubte Bedingung neben denselben
+ * Admin-/Klassenleitung-Pruefungen. Andere Klassen bleiben fail-closed
+ * verweigert.
+ */
+export function assertClassReadAccess(
+  member: GuildMember,
+  guildConfig: GuildConfig,
+  klasse: { id: string; name: string; leadRoleId: string | null },
+  ownClassId: string | null,
+): void {
+  if (isServerAdmin(member, guildConfig)) return;
+  if (isClassLeadOf(member, klasse)) return;
+  if (ownClassId && ownClassId === klasse.id) return;
+  throw new PermissionError(
+    `Du hast keinen Zugriff auf die Informationen von Klasse ${klasse.name}.`,
+  );
+}
+
+/**
  * Generische Pruefung fuer eine globale Mindest-Berechtigungsstufe, wie sie
  * Slash-Commands ueber `permissionLevel` deklarieren. Fuer Aktionen, die sich
  * auf eine bestimmte Klasse beziehen, muss zusaetzlich isClassLeadOf() bzw.

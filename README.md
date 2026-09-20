@@ -3,10 +3,11 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind fuenf Kernfunktionen umgesetzt:
+Berechtigungssystem, Command-/Event-Infrastruktur) sind sechs Kernfunktionen umgesetzt:
 **Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**,
-**private Klassenbereiche** und **klassenbezogene Klassenleitung**. Weitere Fachfunktionen
-(Berichte, weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
+**private Klassenbereiche**, **klassenbezogene Klassenleitung** sowie **Pruefungen und Termine**
+als erste klassenbezogene Fachfunktionen. Weitere Fachfunktionen (Berichte, Lernmaterial,
+weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Verifizierung
@@ -134,6 +135,38 @@ Klasse verwalten, ohne jede serverweite Berechtigung.
 Alle Zuweisungen, Wechsel und Entfernungen werden im Audit-Log protokolliert
 (`class.lead_assign` / `class.lead_change` / `class.lead_remove`).
 
+## Pruefungen und Termine
+
+Die erste klassenbezogene Fachfunktion auf Basis der Klassenleitung: Admin oder die
+Klassenleitung der jeweiligen Klasse koennen Pruefungen und Termine verwalten, alle Mitglieder
+der Klasse koennen sie einsehen.
+
+**🎓 Pruefungen:**
+
+- `/pruefung-erstellen klasse:<A|B|C> fach:<...> datum:<TT.MM.JJJJ> uhrzeit:<HH:MM> beschreibung:<...> [lernhinweise:<...>]`
+- `/pruefung-bearbeiten pruefung-id:<...> [fach:<...>] [datum:<...>] [uhrzeit:<...>] [beschreibung:<...>] [lernhinweise:<...>]`
+  (Datum und Uhrzeit muessen gemeinsam angegeben werden, wenn der Zeitpunkt geaendert werden soll)
+- `/pruefung-loeschen pruefung-id:<...>`
+- `/pruefungen-anzeigen [klasse:<A|B|C>]` - ohne Angabe wird die eigene Klasse angezeigt
+
+**📅 Termine:** dieselben vier Befehle mit `termin-` statt `pruefung-` (`titel` statt `fach`,
+keine Lernhinweise).
+
+Zugriff:
+
+- **Verwalten** (erstellen/bearbeiten/loeschen): nur Admin oder die Klassenleitung der
+  betroffenen Klasse - zentral geprueft ueber `assertClassManagementAccess()`, dieselbe Funktion
+  wie bei den privaten Klassenbereichen. Beim Bearbeiten/Loeschen wird die Klasse dabei **immer**
+  aus dem gespeicherten Datensatz aufgeloest, nie aus einem vom Aufrufer angegebenen Parameter -
+  eine Klassenleitung kann dadurch nicht durch Angabe einer fremden Pruefungs-/Termin-ID auf eine
+  andere Klasse zugreifen.
+- **Lesen** (`*-anzeigen`): jedes verifizierte Mitglied fuer die eigene Klasse, zusaetzlich Admin
+  und die jeweilige Klassenleitung fuer jede Klasse (`assertClassReadAccess()`). Der Zugriff auf
+  eine fremde Klasse wird auch bei expliziter Angabe verweigert.
+
+Jede Erstellung/Aenderung/Loeschung wird im Audit-Log protokolliert (`exam.create`/`exam.update`/
+`exam.delete` bzw. `appointment.create`/`appointment.update`/`appointment.delete`).
+
 ## Voraussetzungen
 
 - Node.js 22+
@@ -229,6 +262,7 @@ src/
                                      onboardingFlow.ts (reine Fragen-/Skip-Logik ohne I/O),
                                      classService.ts, classAreaService.ts (private
                                      Klassenbereiche), classLeadService.ts (Klassenleitung),
+                                     examService.ts / appointmentService.ts (Pruefungen/Termine),
                                      discordRoleSync.ts (gemeinsame
                                      Rollenvergabe-Fehlerbehandlung)
   types/                              Gemeinsame TypeScript-Typen
@@ -278,3 +312,8 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   erlaubt ist nur ein globaler Admin oder die Klassenleitung genau der betroffenen Klasse - eine
   manipulierte Klassen-ID/ein manipulierter Command-Parameter fuehrt nie zu Zugriff auf eine
   fremde Klasse. Kuenftige klassenbezogene Funktionen sollen dieselbe Pruefung verwenden.
+- Pruefungen und Termine nutzen `assertClassManagementAccess()`/`assertClassReadAccess()` als
+  einzige Berechtigungslogik - keine zweite, parallele Pruefung. Beim Bearbeiten/Loeschen wird
+  die Klasse dabei immer aus dem gespeicherten Datensatz (`exam.classId`/`appointment.classId`)
+  aufgeloest statt aus einem vom Aufrufer angegebenen Parameter, damit eine manipulierte
+  Pruefungs-/Termin-ID niemals Zugriff auf eine fremde Klasse verschaffen kann.

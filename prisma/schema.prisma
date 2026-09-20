@@ -34,9 +34,11 @@ model GuildConfig {
   welcomeChannelId   String?
   whereAmIChannelId  String? // #wo-bin-ich
 
-  classes    Class[]
-  members    Member[]
-  auditLogs  AuditLogEntry[]
+  classes      Class[]
+  members      Member[]
+  auditLogs    AuditLogEntry[]
+  exams        Exam[]
+  appointments Appointment[]
 }
 
 /// Ein Mitglied der Lerngruppe, verknuepft mit seinem Discord-Account.
@@ -115,10 +117,57 @@ model Class {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members Member[]
+  members      Member[]
+  exams        Exam[]
+  appointments Appointment[]
 
   @@unique([guildId, name])
   @@index([guildId, leadDiscordId])
+}
+
+/// Pruefung einer Klasse (Fach/Thema, Beschreibung, optionale Lernhinweise,
+/// Datum+Uhrzeit). Verwaltet ausschliesslich von Admin oder der Klassenleitung
+/// genau dieser Klasse (siehe examService.ts).
+model Exam {
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId String
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  subject     String // Fach/Thema
+  description String
+  studyNotes  String? // optionale Lernhinweise
+  scheduledAt DateTime // Datum + Uhrzeit der Pruefung
+
+  createdByDiscordId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, classId, scheduledAt])
+}
+
+/// Termin einer Klasse (Titel, Beschreibung, Datum+Uhrzeit). Verwaltet
+/// ausschliesslich von Admin oder der Klassenleitung genau dieser Klasse
+/// (siehe appointmentService.ts).
+model Appointment {
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId String
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String
+  scheduledAt DateTime
+
+  createdByDiscordId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, classId, scheduledAt])
 }
 
 /// Zentrales Audit-Log fuer administrative Aktionen und Moderation.

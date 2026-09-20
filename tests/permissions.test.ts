@@ -3,6 +3,7 @@ import type { GuildConfig } from '@prisma/client';
 import type { GuildMember } from 'discord.js';
 import {
   assertClassManagementAccess,
+  assertClassReadAccess,
   isClassLeadOf,
   isServerAdmin,
   isVerified,
@@ -73,10 +74,10 @@ describe('isVerified', () => {
   });
 });
 
-const CLASS_A = { name: 'A', leadRoleId: 'role-lead-a' };
-const CLASS_B = { name: 'B', leadRoleId: 'role-lead-b' };
-const CLASS_C = { name: 'C', leadRoleId: 'role-lead-c' };
-const CLASS_UNCONFIGURED = { name: 'A', leadRoleId: null };
+const CLASS_A = { id: 'class-a', name: 'A', leadRoleId: 'role-lead-a' };
+const CLASS_B = { id: 'class-b', name: 'B', leadRoleId: 'role-lead-b' };
+const CLASS_C = { id: 'class-c', name: 'C', leadRoleId: 'role-lead-c' };
+const CLASS_UNCONFIGURED = { id: 'class-a', name: 'A', leadRoleId: null };
 
 describe('isClassLeadOf', () => {
   it('erkennt die Klassenleitung der eigenen Klasse', () => {
@@ -146,6 +147,46 @@ describe('assertClassManagementAccess - Fail-Closed-Matrix (Anforderung: keine M
   it('verweigert fail-closed den Zugriff auf eine noch nicht konfigurierte Klasse (leadRoleId null), auch fuer eine andere Klassenleitung', () => {
     const leadA = fakeMember({ id: 'lead-a', ownerId: 'owner', roleIds: ['role-lead-a'] });
     expect(() => assertClassManagementAccess(leadA, fakeGuildConfig(), CLASS_UNCONFIGURED)).toThrow(
+      PermissionError,
+    );
+  });
+});
+
+describe('assertClassReadAccess', () => {
+  it('erlaubt globalen Admins das Lesen jeder Klasse', () => {
+    const admin = fakeMember({ id: 'admin-1', ownerId: 'owner', isAdministrator: true });
+    expect(() => assertClassReadAccess(admin, fakeGuildConfig(), CLASS_B, null)).not.toThrow();
+  });
+
+  it('erlaubt der Klassenleitung das Lesen der eigenen Klasse', () => {
+    const leadA = fakeMember({ id: 'lead-a', ownerId: 'owner', roleIds: ['role-lead-a'] });
+    expect(() => assertClassReadAccess(leadA, fakeGuildConfig(), CLASS_A, null)).not.toThrow();
+  });
+
+  it('verweigert der Klassenleitung das Lesen einer fremden Klasse', () => {
+    const leadA = fakeMember({ id: 'lead-a', ownerId: 'owner', roleIds: ['role-lead-a'] });
+    expect(() => assertClassReadAccess(leadA, fakeGuildConfig(), CLASS_B, null)).toThrow(
+      PermissionError,
+    );
+  });
+
+  it('erlaubt einem Mitglied das Lesen der eigenen Klasse (ownClassId stimmt ueberein)', () => {
+    const member = fakeMember({ id: 'member-1', ownerId: 'owner' });
+    expect(() =>
+      assertClassReadAccess(member, fakeGuildConfig(), CLASS_A, CLASS_A.id),
+    ).not.toThrow();
+  });
+
+  it('verweigert einem Mitglied das Lesen einer fremden Klasse', () => {
+    const member = fakeMember({ id: 'member-1', ownerId: 'owner' });
+    expect(() => assertClassReadAccess(member, fakeGuildConfig(), CLASS_B, CLASS_A.id)).toThrow(
+      PermissionError,
+    );
+  });
+
+  it('verweigert fail-closed, wenn das Mitglied ueberhaupt keiner Klasse zugeordnet ist', () => {
+    const member = fakeMember({ id: 'member-1', ownerId: 'owner' });
+    expect(() => assertClassReadAccess(member, fakeGuildConfig(), CLASS_A, null)).toThrow(
       PermissionError,
     );
   });

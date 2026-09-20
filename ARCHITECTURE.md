@@ -59,10 +59,11 @@ Faustregeln:
   direkt im Anzeigetext, wodurch Buttons, #wo-bin-ich-Footer und Bestaetigungstexte
   (`interactionCreate.ts`, `/setup-klassen`) es automatisch mitbekommen - keine zweite Emoji-Zuordnung
   parallel pflegen.
-- **Neue Fachbereiche** (Lernmaterial 📚, Pruefungen 🎓, Berichtsheft 📝, Termine 📅, Hilfe 🆘,
-  Sprachkanal 🔊 - siehe Roadmap) erhalten ihr Emoji, sobald die zugehoerige UI tatsaechlich
-  existiert; es wird nichts vorab in Commands/Embeds eingebaut, die es noch nicht gibt.
-  Klassenleitung 👑 ist bereits umgesetzt (`/setup-klassenleitung`, `/entferne-klassenleitung`).
+- **Neue Fachbereiche** (Lernmaterial 📚, Berichtsheft 📝, Hilfe 🆘, Sprachkanal 🔊 - siehe
+  Roadmap) erhalten ihr Emoji, sobald die zugehoerige UI tatsaechlich existiert; es wird nichts
+  vorab in Commands/Embeds eingebaut, die es noch nicht gibt. Klassenleitung 👑 (`/setup-
+klassenleitung`, `/entferne-klassenleitung`) sowie Pruefungen 🎓 und Termine 📅 (alle
+  `/pruefung-*`/`/termin-*`-Befehle und ihre Embeds) sind bereits umgesetzt.
 
 ## Datenmodell (aktueller Stand)
 
@@ -79,6 +80,11 @@ Faustregeln:
   unten) sowie der Klassenleitung: `leadRoleId` (Discord-Rolle, wird bei Bedarf automatisch
   angelegt) und `leadDiscordId` (Discord-ID der aktuell zugewiesenen Person, siehe
   "Klassenleitung" unten).
+- `Exam`: Pruefung einer Klasse (Fach/Thema, Beschreibung, optionale Lernhinweise, Zeitpunkt),
+  verknuepft mit `Class` und `GuildConfig`, siehe "Pruefungen und Termine" unten.
+- `Appointment`: Termin einer Klasse (Titel, Beschreibung, Zeitpunkt) - strukturell wie `Exam`,
+  aber ein eigenes Modell statt eines gemeinsamen mit Nullable-Feldern, da sich die Pflichtfelder
+  unterscheiden (Fach/Lernhinweise vs. reiner Titel).
 - `AuditLogEntry`: Generisches Audit-Log fuer administrative Aktionen/Moderation.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
@@ -102,6 +108,16 @@ daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt
 > ist, und keine serverseitige Abfrage "leitet diese Person bereits eine andere Klasse?" erlaubt.
 > `leadDiscordId` macht Zuweisung/Wechsel/Entfernung robust und DB-basiert, analog zu
 > `Member.classId` fuer die normale Klassenzugehoerigkeit.
+
+> **Migration `add_exams_and_appointments`:** Fuegt die neuen Modelle `Exam` und `Appointment`
+> hinzu (je mit `guildId`/`classId`-Fremdschluesseln, Index auf `guildId, classId, scheduledAt`
+> fuer die chronologisch sortierte Listenabfrage) - echte neue Tabellen statt einer Erweiterung
+> von `Class`, da es sich um eine 1:n-Beziehung (mehrere Pruefungen/Termine pro Klasse) statt
+> flacher Einzelwerte handelt. Zwei getrennte Modelle statt eines gemeinsamen "ClassEvent" mit
+> Typ-Diskriminator, weil sich die Pflichtfelder unterscheiden (Pruefung: Fach/Thema + optionale
+> Lernhinweise; Termin: nur Titel) und ein gemeinsames Modell entweder Nullable-Felder fuer die
+> jeweils nicht zutreffende Variante gebraucht haette oder eine JSON-Spalte - beides unnoetig
+> komplex fuer zwei feste, einfache Formen.
 
 ## Implementierte Kernfunktionen
 
@@ -426,6 +442,76 @@ Design-Entscheidungen:
   existiert. Explizit mit der geforderten Testmatrix abgedeckt (A→A erlaubt, A→B/C verweigert,
   B→A/C→A verweigert, siehe `tests/permissions.test.ts`).
 
+### Pruefungen und Termine
+
+Die erste klassenbezogene Fachfunktion auf Basis der Klassenleitungs-Architektur (siehe Roadmap-
+Punkt 12 "Kuenftige klassenbezogene Funktionen"). Beteiligte Bausteine:
+
+- `src/utils/dateTime.ts::parseGermanDateTime()`/`formatGermanDateTime()` - reine, I/O-freie
+  Parsing-/Formatierungsfunktion fuer die Eingabeform "Datum (TT.MM.JJJJ) + Uhrzeit (HH:MM)" aus
+  zwei getrennten Slash-Command-Optionen. Prueft zusaetzlich zur Formatpruefung, dass das Datum
+  tatsaechlich existiert (JS' `Date`-Konstruktor rollt sonst z. B. den 30. Februar stillschweigend
+  auf den 2. Maerz um) - wirft andernfalls eine `ValidationError`. Von beiden Services
+  (Pruefungen, Termine) gemeinsam genutzt, damit Datums-/Zeitvalidierung nicht zweimal
+  unterschiedlich implementiert wird.
+- `src/permissions/checkPermission.ts::assertClassReadAccess()` - neue, zur bestehenden
+  `assertClassManagementAccess()` analoge Funktion fuer **Lesezugriff**: erlaubt sind dieselben
+  Admin-/Klassenleitung-Primitiven (`isServerAdmin()`/`isClassLeadOf()`) plus zusaetzlich ein
+  Mitglied, dessen `Member.classId` der angefragten Klasse entspricht. Bewusst keine zweite,
+  parallele Permission-Logik - nur eine zusaetzliche erlaubte Bedingung neben denselben Admin-/
+  Klassenleitung-Pruefungen.
+- `src/repositories/examRepository.ts`/`appointmentRepository.ts` - reiner Datenzugriff. Jede
+  Einzelabfrage nach ID (`getExamById()`/`getAppointmentById()`) ist **immer** zusaetzlich nach
+  `guildId` gescoped, damit eine ID nie serveruebergreifend Daten preisgeben kann.
+- `src/repositories/classRepository.ts::getClassById()` (neu) - laedt eine Klasse ueber ihre ID,
+  ebenfalls immer nach `guildId` gescoped. Zentraler Baustein fuer den Manipulationsschutz: beim
+  Bearbeiten/Loeschen wird darueber die **tatsaechliche** Klasse einer Pruefung/eines Termins
+  aufgeloest (`exam.classId`/`appointment.classId`), nie ein vom Aufrufer behaupteter Klassenname.
+- `src/services/examService.ts`/`appointmentService.ts` - je vier Funktionen
+  (`create*ForClass()`, `update*ForClass()`, `delete*ForClass()`, `list*ForClass()`), bewusst als
+  zwei getrennte, aber strukturell parallele Services statt einer generischen Abstraktion (siehe
+  Datenmodell-Abschnitt oben fuer die Modell-Begruendung). `create`/`update`/`delete` rufen
+  `assertClassManagementAccess()` mit der ueber die Klasse (create) bzw. den geladenen Datensatz
+  (update/delete) aufgeloesten Klasse auf - **das** ist der Manipulationsschutz aus Anforderung 7:
+  eine Klassenleitung kann durch Angabe einer fremden Pruefungs-/Termin-ID niemals auf eine andere
+  Klasse zugreifen, weil die Berechtigungspruefung nie dem Aufrufer glaubt, welcher Klasse eine ID
+  angeblich gehoert. `list*ForClass()` ruft stattdessen `assertClassReadAccess()` auf und loest
+  ohne explizite Klassenangabe die eigene Klasse des Aufrufers auf (`Member.classId`).
+- `src/bot/ui/classEventMessage.ts` - Embed-Builder fuer die `*-anzeigen`-Befehle
+  (`buildExamListEmbed()`/`buildAppointmentListEmbed()`), sortiert chronologisch (naechster
+  Termin zuerst), inkl. der jeweiligen ID pro Eintrag (fuer die anschliessende Bearbeitung/
+  Loeschung per ID - siehe Design-Entscheidungen unten).
+- Commands (`src/bot/commands/klasse/`, neue Kategorie fuer klasseninterne Fachfunktionen):
+  `/pruefung-erstellen`, `/pruefung-bearbeiten`, `/pruefung-loeschen` (alle KLASSENLEITUNG),
+  `/pruefungen-anzeigen` (VERIFIED) sowie die analogen vier `/termin-*`-Befehle.
+
+Design-Entscheidungen:
+
+- **Zwei neue Tabellen, sauber begruendet und migriert.** Siehe Migrations-Hinweis im
+  Datenmodell-Abschnitt oben.
+- **Identifikation ueber ID statt interaktivem Auswahl-Menu.** Da Discord-Slash-Commands keinen
+  Optionstyp fuer "beliebiger Datensatz aus einer dynamischen Liste" kennen, zeigt
+  `*-anzeigen` die ID jeder Pruefung/jedes Termins an, die dann in `*-bearbeiten`/`*-loeschen` als
+  String-Parameter angegeben wird - derselbe pragmatische Ansatz wie viele etablierte Discord-Bots
+  (z. B. Warn-/Ticket-Systeme). Ein interaktives Auswahl-Menu (Select-Menu/Buttons) waere
+  komfortabler, aber fuer diesen ersten Ausbauschritt bewusst nicht Teil des Umfangs.
+- **Keine automatische Kanal-Benachrichtigung.** Erstellen/Aendern/Loeschen postet aktuell nichts
+  automatisch in den jeweiligen Pruefungen-/Termine-Kanal (`examChannelId`/`scheduleChannelId`) -
+  nur eine ephemere Bestaetigung an die ausfuehrende Person. Das war nicht Teil der Anforderung;
+  eine spaetere Erweiterung koennte das ergaenzen, ohne die Service-Schicht anzufassen.
+  Verwaltungspersonen taggen sich dafuer eine Zusammenfassung manuell im Kanal an.
+- **Datum und Uhrzeit als zwei getrennte Optionen statt einer kombinierten.** Entspricht der
+  Anforderungsformulierung ("Datum und Uhrzeit") und ist in der Discord-Oberflaeche als zwei
+  kurze Textfelder komfortabler auszufuellen. Beim Bearbeiten muessen beide gemeinsam angegeben
+  werden, wenn der Zeitpunkt geaendert werden soll (sonst `ValidationError`) - vermeidet die
+  Mehrdeutigkeit, welchen Teil ein alleinstehendes `datum` oder `uhrzeit` eigentlich aendern soll.
+- **Lesezugriff bewusst per Datenbankzustand, nicht per Kanal-Sichtbarkeit geloest.**
+  `assertClassReadAccess()` prueft `Member.classId`, nicht ob die Person Zugriff auf
+  `examChannelId`/`scheduleChannelId` hat - konsistent mit dem Rest der Architektur, die
+  Berechtigungen immer ueber die Datenbank/Discord-Rollen und nicht ueber Kanal-Overwrites prueft
+  (Kanal-Overwrites sichern zusaetzlich auf Discord-Ebene ab, sind aber nicht die Quelle der
+  Wahrheit fuer die Bot-Logik).
+
 ## Sicherheitsueberlegungen
 
 - Keine Zugangsdaten im Repository (`.env` ignoriert, nur `.env.example` mit Platzhaltern).
@@ -468,6 +554,14 @@ Design-Entscheidungen:
   closed: fehlt die Klasse, die Rolle oder die Zuordnung, wird der Zugriff verweigert statt im
   Zweifel erlaubt. Eine manipulierte Klassen-ID/ein manipulierter Command-Parameter kann dadurch
   nie Zugriff auf eine fremde Klasse verschaffen (siehe Testmatrix in `tests/permissions.test.ts`).
+- Pruefungen und Termine loesen die Berechtigung beim Bearbeiten/Loeschen immer aus dem
+  gespeicherten Datensatz auf (`exam.classId`/`appointment.classId` -> `getClassById()`), niemals
+  aus einem vom Aufrufer angegebenen Klassennamen - eine manipulierte Pruefungs-/Termin-ID kann
+  dadurch nie auf eine fremde Klasse zugreifen, selbst wenn der Aufrufer die ID einer fremden
+  Klasse errät oder kopiert. `getClassById()`/`getExamById()`/`getAppointmentById()` sind
+  zusaetzlich immer nach `guildId` gescoped, damit keine ID serveruebergreifend Daten preisgibt.
+  Lesezugriff (`assertClassReadAccess()`) ist ebenso fail-closed: ohne eine der drei erlaubten
+  Bedingungen (Admin, Klassenleitung dieser Klasse, eigene Klassenzugehoerigkeit) wird verweigert.
 
 ## Roadmap der Kernfunktionen
 
@@ -494,9 +588,11 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
    Siehe Abschnitt ["Klassenleitung" im README](./README.md#klassenleitung) sowie
    "Klassenleitung" oben. `assertClassManagementAccess()` ist ab jetzt die zentrale Pruefung fuer
    alle folgenden klassenbezogenen Funktionen (Punkte 9-12, 14).
-9. **Klausuren und Termine** - kann `assertClassManagementAccess()` direkt fuer die
-   Verwaltungsseite wiederverwenden; der Pruefungs-/Termine-Kanal existiert bereits
-   (`examChannelId`/`scheduleChannelId`).
+9. ~~**Pruefungen und Termine**~~ - **umgesetzt.** Siehe Abschnitt
+   ["Pruefungen und Termine" im README](./README.md#pruefungen-und-termine) sowie "Pruefungen und
+   Termine" oben. Erste klassenbezogene Fachfunktion, die `assertClassManagementAccess()`/
+   `assertClassReadAccess()` fuer Verwaltung bzw. Lesezugriff verwendet - das Muster fuer die
+   folgenden Punkte 10-12.
 10. **Tages-/Wochenberichte**
 11. **Berichtsheft** - Kanal existiert bereits (`reportChannelId`).
 12. **Lernmaterial** - Kanal existiert bereits (`materialChannelId`).

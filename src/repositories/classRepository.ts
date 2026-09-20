@@ -21,6 +21,21 @@ export async function getClassByName(guildId: string, name: ClassName): Promise<
   });
 }
 
+/**
+ * Laedt eine Klasse ueber ihre ID, aber immer zusaetzlich nach `guildId`
+ * gescoped - damit eine Klassen-ID nie serveruebergreifend Daten preisgeben
+ * kann. Wird u. a. von examService.ts/appointmentService.ts verwendet, um zu
+ * einem gespeicherten Datensatz (Pruefung/Termin) die tatsaechliche Klasse
+ * fuer die Berechtigungspruefung aufzuloesen, statt einem vom Aufrufer
+ * behaupteten Klassennamen zu vertrauen ("Fail closed" gegen manipulierte
+ * Parameter).
+ */
+export async function getClassById(guildId: string, classId: string): Promise<Class | null> {
+  return prisma.class.findFirst({
+    where: { id: classId, guildId },
+  });
+}
+
 export async function listClasses(guildId: string): Promise<Class[]> {
   return prisma.class.findMany({
     where: { guildId },
