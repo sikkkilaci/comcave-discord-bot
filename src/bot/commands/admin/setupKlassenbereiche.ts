@@ -1,9 +1,13 @@
-import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder, type GuildMember } from 'discord.js';
 import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
 import { getOrCreateGuildConfig } from '../../../repositories/guildConfigRepository.js';
 import { getClassByName } from '../../../repositories/classRepository.js';
 import { setupClassArea } from '../../../services/classAreaService.js';
+import {
+  assertClassManagementAccess,
+  isServerAdmin,
+} from '../../../permissions/checkPermission.js';
 import { ValidationError } from '../../../utils/errors.js';
 import {
   CLASS_NAMES,
@@ -16,23 +20,33 @@ const command: Command = {
   data: new SlashCommandBuilder()
     .setName('setup-klassenbereiche')
     .setDescription(
-      '🏫 Richtet private Kanaele (Chat, Ankuendigungen, Termine, ...) je Klasse ein (nur Admins).',
+      '🏫 Richtet private Kanaele je Klasse ein (Admins: alle, Klassenleitung: nur die eigene).',
     )
     .addStringOption((option) =>
       option
         .setName('klasse')
-        .setDescription(
-          'Nur eine bestimmte Klasse einrichten (Standard: alle konfigurierten Klassen)',
-        )
+        .setDescription('Klasse (Klassenleitung: eigene Klasse angeben; Admin-Standard: alle)')
         .setRequired(false)
         .addChoices(...CLASS_NAMES.map((name) => ({ name: CLASS_NAME_LABELS[name], value: name }))),
     ),
-  permissionLevel: PermissionLevel.ADMIN,
+  // Klassenleitung darf den Befehl fuer die eigene Klasse ausfuehren (siehe
+  // assertClassManagementAccess() unten), Admins fuer alle Klassen - die
+  // eigentliche Einschraenkung auf "nur die eigene Klasse" erfolgt daher nicht
+  // ueber diese globale Stufe, sondern gezielt pro Klasse in der Schleife.
+  permissionLevel: PermissionLevel.KLASSENLEITUNG,
   async execute(interaction) {
     if (!interaction.guild) return;
 
+    const member = interaction.member as GuildMember;
     const guildConfig = await getOrCreateGuildConfig(interaction.guild.id);
     const requested = interaction.options.getString('klasse');
+
+    if (!requested && !isServerAdmin(member, guildConfig)) {
+      throw new ValidationError(
+        'Als Klassenleitung musst du die Klasse angeben, fuer die du den Klassenbereich einrichten willst.',
+      );
+    }
+
     const targetNames: ClassName[] = requested
       ? [classNameSchema.parse(requested)]
       : [...CLASS_NAMES];
@@ -41,6 +55,12 @@ const command: Command = {
 
     for (const name of targetNames) {
       const klasse = await getClassByName(interaction.guild.id, name);
+
+      // Fail-closed: verweigert Klassenleitung den Zugriff auf jede Klasse,
+      // deren leadRoleId sie nicht besitzt - inklusive Klassen, die noch gar
+      // nicht existieren (leadRoleId dann implizit null). Ohne diese Pruefung
+      // koennte eine manipulierte "klasse"-Angabe eine fremde Klasse treffen.
+      assertClassManagementAccess(member, guildConfig, klasse ?? { name, leadRoleId: null });
 
       if (!klasse || !klasse.roleId) {
         lines.push(

@@ -3,10 +3,10 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind vier Kernfunktionen umgesetzt:
-**Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C** und
-**private Klassenbereiche**. Weitere Fachfunktionen (Klassenleitung, Berichte, Moderation, ...)
-werden darauf aufbauend schrittweise ergaenzt.
+Berechtigungssystem, Command-/Event-Infrastruktur) sind fuenf Kernfunktionen umgesetzt:
+**Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**,
+**private Klassenbereiche** und **klassenbezogene Klassenleitung**. Weitere Fachfunktionen
+(Berichte, weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Verifizierung
@@ -103,6 +103,37 @@ Konvention. Der Befehl ist **pro Kanal idempotent**: ein erneuter Aufruf legt ni
 sondern ergaenzt nur fehlende Kanaele (z. B. wenn einer versehentlich geloescht wurde) und laesst
 alle bestehenden unangetastet.
 
+## Klassenleitung
+
+Eine Klassenleitung ist **kein Discord-Administrator** - sie darf ausschliesslich ihre eigene
+Klasse verwalten, ohne jede serverweite Berechtigung.
+
+1. Ein Admin weist die Klassenleitung zu: `/setup-klassenleitung klasse:<A|B|C> mitglied:<@Person>`.
+   Existiert noch keine Klassenleitungs-Rolle fuer diese Klasse, wird sie automatisch angelegt
+   (immer **ohne jede Basis-Berechtigung** - alle Rechte kommen ausschliesslich aus den
+   Kanal-Overwrites des privaten Klassenbereichs). Haelt die Person bereits die Klassenleitung
+   einer anderen Klasse, wird diese automatisch sauber entfernt (eine Person leitet immer nur
+   eine Klasse). Eine bestehende Klassenleitung derselben Klasse wird bei Neuzuweisung ersetzt.
+2. Entfernen/Aendern: `/entferne-klassenleitung klasse:<A|B|C>` entzieht die Rolle und loescht
+   die Zuweisung (die Rolle selbst bleibt fuer eine spaetere Neuzuweisung erhalten). Eine neue
+   Zuweisung per `/setup-klassenleitung` ersetzt eine bestehende automatisch (kein separater
+   "Entfernen"-Schritt noetig fuer einen reinen Wechsel).
+3. Innerhalb der eigenen Klassenkanaele darf die Klassenleitung u. a. Nachrichten
+   senden/bearbeiten/loeschen/anheften, Dateien hochladen, Threads erstellen/verwalten, die
+   eigene Klassenrolle erwaehnen, den Klassen-Sprachkanal moderieren (Mute/Deafen/Move) und bei
+   Bedarf Mitglieder der eigenen Klasse per Timeout moderieren.
+4. **Ausdruecklich ausgeschlossen** - egal ob als Basis-Rollenberechtigung oder Kanal-Overwrite:
+   Administrator, Server-/Rollen-/Kanal-/Webhook-Verwaltung, globale Ban-/Kick-Rechte sowie jede
+   Verwaltung einer anderen Klasse.
+5. `/setup-klassenbereiche` darf jetzt auch von einer Klassenleitung ausgefuehrt werden -
+   **ausschliesslich fuer die eigene Klasse** (die Klasse muss explizit angegeben werden). Ein
+   Versuch, eine fremde Klasse anzugeben, wird zentral ueber `assertClassManagementAccess()`
+   (siehe `src/permissions/checkPermission.ts`) mit einer `PermissionError` abgelehnt - unabhaengig
+   vom uebergebenen Command-Parameter ("Fail closed").
+
+Alle Zuweisungen, Wechsel und Entfernungen werden im Audit-Log protokolliert
+(`class.lead_assign` / `class.lead_change` / `class.lead_remove`).
+
 ## Voraussetzungen
 
 - Node.js 22+
@@ -197,7 +228,8 @@ src/
   services/                         Fachlogik: verificationService.ts, onboardingService.ts,
                                      onboardingFlow.ts (reine Fragen-/Skip-Logik ohne I/O),
                                      classService.ts, classAreaService.ts (private
-                                     Klassenbereiche), discordRoleSync.ts (gemeinsame
+                                     Klassenbereiche), classLeadService.ts (Klassenleitung),
+                                     discordRoleSync.ts (gemeinsame
                                      Rollenvergabe-Fehlerbehandlung)
   types/                              Gemeinsame TypeScript-Typen
   utils/                                Logger, Fehlerklassen
@@ -236,3 +268,13 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   Klassenzugehoerigkeit darf nie globale Admin-Rechte verleihen.
 - Private Klassenbereiche sind ueber echte Discord-Permission-Overwrites abgesichert
   (`@everyone` explizit ausgeschlossen), nicht nur durch Konvention oder Kanal-Anordnung.
+- Die Klassenleitungs-Rolle wird beim Anlegen immer mit `permissions: []` erstellt (keine
+  Basis-Berechtigung) - jedes Recht kommt ausschliesslich aus den Kanal-Overwrites der eigenen
+  Klasse. Vor jeder Zuweisung prueft `classLeadService.ts` zusaetzlich fail-closed, ob eine
+  bestehende Rolle nachtraeglich manuell mit Administrator-Rechten versehen wurde, und verweigert
+  die Zuweisung in dem Fall.
+- Klassenbezogene Verwaltungsaktionen laufen zentral ueber
+  `assertClassManagementAccess()`/`isClassLeadOf()` (`src/permissions/checkPermission.ts`):
+  erlaubt ist nur ein globaler Admin oder die Klassenleitung genau der betroffenen Klasse - eine
+  manipulierte Klassen-ID/ein manipulierter Command-Parameter fuehrt nie zu Zugriff auf eine
+  fremde Klasse. Kuenftige klassenbezogene Funktionen sollen dieselbe Pruefung verwenden.

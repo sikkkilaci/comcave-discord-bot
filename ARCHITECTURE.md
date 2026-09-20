@@ -60,8 +60,9 @@ Faustregeln:
   (`interactionCreate.ts`, `/setup-klassen`) es automatisch mitbekommen - keine zweite Emoji-Zuordnung
   parallel pflegen.
 - **Neue Fachbereiche** (Lernmaterial 📚, Pruefungen 🎓, Berichtsheft 📝, Termine 📅, Hilfe 🆘,
-  Sprachkanal 🔊, Klassenleitung 👑 - siehe Roadmap) erhalten ihr Emoji, sobald die zugehoerige
-  UI tatsaechlich existiert; es wird nichts vorab in Commands/Embeds eingebaut, die es noch nicht gibt.
+  Sprachkanal 🔊 - siehe Roadmap) erhalten ihr Emoji, sobald die zugehoerige UI tatsaechlich
+  existiert; es wird nichts vorab in Commands/Embeds eingebaut, die es noch nicht gibt.
+  Klassenleitung 👑 ist bereits umgesetzt (`/setup-klassenleitung`, `/entferne-klassenleitung`).
 
 ## Datenmodell (aktueller Stand)
 
@@ -75,8 +76,9 @@ Faustregeln:
   (`categoryId`) und den sieben Kanal-IDs des privaten Klassenbereichs
   (`chatChannelId`/`announcementChannelId`/`scheduleChannelId`/`examChannelId`/
   `reportChannelId`/`materialChannelId`/`voiceChannelId`, siehe "Private Klassenbereiche"
-  unten) sowie einer Klassenleitungs-Rolle (`leadRoleId`, noch ungenutzt - naechster Schritt
-  "Klassenleitung").
+  unten) sowie der Klassenleitung: `leadRoleId` (Discord-Rolle, wird bei Bedarf automatisch
+  angelegt) und `leadDiscordId` (Discord-ID der aktuell zugewiesenen Person, siehe
+  "Klassenleitung" unten).
 - `AuditLogEntry`: Generisches Audit-Log fuer administrative Aktionen/Moderation.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
@@ -91,6 +93,15 @@ daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt
 > direkt und flach auf `Class` zu speichern (statt eines eigenen Nebenmodells fuer eine feste,
 > nicht-dynamische 1:1-Menge von sieben Kanaelen) entspricht dem bereits etablierten Stil von
 > `roleId`/`categoryId`/`leadRoleId`.
+
+> **Migration `add_class_lead_assignment`:** Ergaenzt `Class.leadDiscordId` (nullable, plus Index
+> auf `guildId, leadDiscordId`) - rein additiv, keine Datenmigration. Begruendung: `leadRoleId`
+> speichert nur, welche _Rolle_ Klassenleitung ist, nicht _wer_ sie aktuell traegt. Ohne ein
+> eigenes Feld muesste jede Neuzuweisung/Entfernung die Rollenmitgliedschaft live aus dem
+> Discord-Cache lesen (`role.members`), was fehlschlaegt, sobald die Person nicht (mehr) im Cache
+> ist, und keine serverseitige Abfrage "leitet diese Person bereits eine andere Klasse?" erlaubt.
+> `leadDiscordId` macht Zuweisung/Wechsel/Entfernung robust und DB-basiert, analog zu
+> `Member.classId` fuer die normale Klassenzugehoerigkeit.
 
 ## Implementierte Kernfunktionen
 
@@ -268,11 +279,12 @@ Design-Entscheidungen:
   (`src/bot/discordHelpers.ts`) prueft das bei `/setup-klassen` explizit, inklusive der
   discord.js-Eigenheit, dass eine Rolle aus einer Interaktion typseitig entweder ein volles
   `Role`-Objekt (`PermissionsBitField`) oder ein rohes `APIRole` (String-Bitfeld) sein kann.
-- **Klassenleitung bewusst noch nicht implementiert, aber vorbereitet.** Das bestehende
-  Berechtigungssystem (`PermissionLevel.KLASSENLEITUNG`, `isClassLeadOf()`) und das Datenfeld
-  `Class.leadRoleId` decken bereits ab, dass eine kuenftige Klassenleitung nur ihre _eigene_
-  Klasse verwalten darf; `assignClass()` und die Commands dieser Iteration vergeben oder nutzen
-  `leadRoleId` noch nicht.
+- **Klassenleitung war zum Zeitpunkt dieser Iteration noch nicht implementiert, aber bereits
+  vorbereitet** (siehe Abschnitt "Klassenleitung" unten fuer die inzwischen umgesetzte Version).
+  Das bestehende Berechtigungssystem (`PermissionLevel.KLASSENLEITUNG`, `isClassLeadOf()`) und das
+  Datenfeld `Class.leadRoleId` deckten bereits ab, dass eine kuenftige Klassenleitung nur ihre
+  _eigene_ Klasse verwalten darf; `assignClass()` und die Commands dieser Iteration vergaben oder
+  nutzten `leadRoleId` noch nicht.
 - **Oeffentliche Nachricht bleibt neutral.** Siehe `interactionCreate.ts`-Punkt oben - verhindert,
   dass Klick A den fuer Klick B sichtbaren Zustand der geteilten Kanal-Nachricht verfaelscht.
 
@@ -318,13 +330,101 @@ Design-Entscheidungen:
   "UI-Konventionen: Emojis" oben) bleiben Kanalnamen reiner ASCII-Text, um jedes Risiko von
   Sonderzeichen-Normalisierungsproblemen bei der Discord-API zu vermeiden, die ohne echten
   Token/Server-Verbindung nicht verifizierbar waeren.
-- **Klassenleitung weiterhin vorbereitet, nicht abgeschlossen.** `buildOverwrites()` liest
-  `Class.leadRoleId` bereits mit; sobald ein kuenftiges Setup-Command diese Rolle setzt, greift
-  die Berechtigung fuer danach **neu angelegte** Klassenbereiche automatisch. Fuer zu diesem
-  Zeitpunkt bereits bestehende Kanaele braucht es dann zusaetzlich einen "Berechtigungen
-  neu anwenden"-Mechanismus (z. B. ein `/setup-klassenbereiche` erneut ausfuehren mit einer
-  spaeteren Erweiterung, die auch bestehende Kanal-Overwrites aktualisiert statt nur fehlende
-  Kanaele zu ergaenzen) - bewusst nicht Teil dieser Iteration.
+- **Klassenleitung war zu diesem Zeitpunkt weiterhin vorbereitet, nicht abgeschlossen** (siehe
+  "Klassenleitung" unten fuer die inzwischen umgesetzte Version). `buildOverwrites()` las
+  `Class.leadRoleId` bereits mit, aber es gab noch kein Setup-Command, das diese Rolle setzt.
+
+### Klassenleitung
+
+Klassenbezogene Administration: eine Klassenleitung verwaltet ausschliesslich ihre eigene Klasse
+und erhaelt dabei zu keinem Zeitpunkt globale Server-Rechte. Beteiligte Bausteine:
+
+- `src/permissions/checkPermission.ts::assertClassManagementAccess()` - die zentrale,
+  wiederverwendbare Zugriffspruefung fuer **jede** klassenbezogene Verwaltungsaktion: erlaubt ist
+  ein globaler Admin (`isServerAdmin()`) oder die Klassenleitung genau der betroffenen Klasse
+  (`isClassLeadOf()`), sonst wird eine `PermissionError` geworfen. Sie nimmt bewusst ein
+  minimales `{ name, leadRoleId }`-Objekt entgegen statt einer Klassen-ID, damit auch eine noch
+  gar nicht existierende Klasse (`leadRoleId: null`) sicher abgelehnt wird ("Fail closed") -
+  jede kuenftige klassenbezogene Funktion (Termine, Berichtsheft, Lernmaterial, Tagesberichte,
+  Klassenmoderation, siehe Roadmap) soll dieselbe Funktion verwenden, statt eine eigene Pruefung
+  danebenzubauen.
+- `src/repositories/classRepository.ts::updateClassLead()`/`getClassLedByMember()` - persistiert
+  `leadRoleId`/`leadDiscordId` und findet die Klasse, die eine bestimmte Person aktuell leitet
+  (fuer die "eine Person leitet nur eine Klasse gleichzeitig"-Regel bei einer Neuzuweisung).
+- `src/services/classLeadService.ts` - die eigentliche Geschaeftslogik:
+  - `assignClassLead()`: laedt die Zielklasse (muss bereits eine Klassenrolle haben, sonst
+    `ValidationError`), legt bei Bedarf per `ensureLeadRole()` eine neue Klassenleitungs-Rolle an
+    (**immer** mit `permissions: []` - keine Basis-Berechtigung) oder heilt eine in Discord
+    geloeschte Rolle selbst (dieselbe Idempotenz-/Selbstheilungs-Philosophie wie
+    `classAreaService.ts`), prueft **fail-closed**, dass eine wiederverwendete bestehende Rolle
+    keine Administrator-Berechtigung traegt (`assertRoleHasNoAdministrator()` - Schutz gegen eine
+    nachtraeglich manuell in Discord geaenderte Rolle), loest eine bestehende
+    Klassenleitungszuweisung derselben Person an einer **anderen** Klasse sauber auf
+    (`getClassLedByMember()` + `releaseClassLead()`), ersetzt eine bestehende Klassenleitung
+    **derselben** Klasse, vergibt die Rolle und schreibt `class.lead_assign`
+    (Erstzuweisung) bzw. `class.lead_change` (Ersetzung/Wechsel) ins Audit-Log.
+  - `removeClassLead()`: entzieht der aktuell zugewiesenen Person die Rolle und loescht
+    `leadDiscordId` (die Rolle selbst bleibt fuer eine spaetere Wiederverwendung bestehen),
+    schreibt `class.lead_remove`. Idempotent (`changed: false`, kein Audit-Log-Eintrag), wenn
+    die Klasse ohnehin keine zugewiesene Klassenleitung hatte.
+  - Beide Funktionen bereinigen den DB-Zustand auch dann, wenn die betroffene Person nicht mehr
+    ueber `guild.members.fetch()` auffindbar ist (z. B. hat den Server verlassen) - kein
+    Discord-Fehler blockiert die Datenkonsistenz.
+- `src/services/classAreaService.ts::CLASS_LEAD_CHANNEL_PERMISSIONS` - der vollstaendige,
+  ausschliesslich als Kanal-Overwrite vergebene Rechtekatalog der Klassenleitung (siehe
+  Design-Entscheidungen unten fuer die genaue Liste und die bewussten Ausschluesse).
+- Commands: `/setup-klassenleitung klasse:<A|B|C> mitglied:<@Person>` (ADMIN) und
+  `/entferne-klassenleitung klasse:<A|B|C>` (ADMIN) delegieren direkt an `classLeadService.ts`.
+  Zusaetzlich wurde `/setup-klassenbereiche` von `PermissionLevel.ADMIN` auf
+  `PermissionLevel.KLASSENLEITUNG` herabgestuft: eine Klassenleitung darf den Befehl jetzt fuer
+  ihre eigene Klasse ausfuehren (Admins weiterhin fuer alle). Die eigentliche Einschraenkung "nur
+  die eigene Klasse" erfolgt dabei **nicht** ueber die globale `PermissionLevel`-Stufe (die
+  pruefte immer nur "irgendeine Klassenleitung"), sondern zusaetzlich pro angefragter Klasse in
+  der Command-Schleife ueber `assertClassManagementAccess()` - das ist das konkrete Beispiel
+  dafuer, wie kuenftige klassenbezogene Commands die zentrale Pruefung nutzen sollen.
+
+Design-Entscheidungen:
+
+- **Schema-Erweiterung minimal und begruendet.** Ein neues Feld (`Class.leadDiscordId`), siehe
+  Migrations-Hinweis im Datenmodell-Abschnitt oben.
+- **Rolle traegt nie Basis-Berechtigungen.** `guild.roles.create({ permissions: [] })` - die
+  Klassenleitungs-Rolle ist in Discords Rollenuebersicht sichtbar als Rolle "ohne Berechtigungen".
+  Jedes tatsaechliche Recht kommt ausschliesslich aus Kanal-/Kategorie-Overwrites innerhalb der
+  eigenen Klasse (`CLASS_LEAD_CHANNEL_PERMISSIONS` in `classAreaService.ts`), niemals aus der
+  Rolle selbst. Das ist der zentrale technische Unterschied zu einer "nur durch UI-Pruefung
+  simulierten" Einschraenkung, wie in der Anforderung explizit gefordert.
+- **`CLASS_LEAD_CHANNEL_PERMISSIONS` im Detail:** `ViewChannel`, `SendMessages`,
+  `ReadMessageHistory`, `ManageMessages` (bearbeiten eigener Nachrichten braucht keine
+  Berechtigung; loeschen/anheften fremder Nachrichten schon), `AttachFiles`, `EmbedLinks`,
+  `CreatePublicThreads`/`CreatePrivateThreads`/`SendMessagesInThreads`/`ManageThreads`,
+  `MentionEveryone` (fuer "eigene Klassenrolle erwaehnen" - als Kanal-Overwrite ungefaehrlich,
+  da nur in den eigenen Klassenkanaelen wirksam), `Connect`/`Speak`/`MuteMembers`/`DeafenMembers`/
+  `MoveMembers` (Sprachkanal-Moderation - die Text-Kanal-Bits dieser Liste sind dort einfach
+  wirkungslos, analog zur bereits bestehenden Klassenrollen-Logik), `ModerateMembers` (Timeout -
+  wirkt nur auf Mitglieder, die ueberhaupt in den privaten Klassenkanaelen sichtbar sind, also
+  ausschliesslich die eigene Klasse).
+- **Bewusst ausgeschlossen, permanent.** `Administrator`, `ManageGuild`, `ManageRoles`,
+  `ManageChannels`, `ManageWebhooks`, `KickMembers`, `BanMembers` erscheinen an **keiner** Stelle
+  im Code fuer die Klassenleitungs-Rolle - weder als Rollen-Basisrecht noch als Overwrite.
+- **Discords native "Server-Events" bewusst nicht verwendet.** Die Anforderung "Termine/Events
+  verwalten" wird **nicht** ueber Discords `ManageEvents`-Berechtigung abgebildet, da sich diese
+  in Discord nicht auf eine einzelne Klasse beschraenken laesst (waere zwangslaeufig serverweit) -
+  stattdessen bekommt die Klassenleitung volle Nachrichtenkontrolle im dedizierten
+  Termine-Kanal (`scheduleChannelId`). Eine Fail-closed-Entscheidung: lieber ein Feature bewusst
+  einschraenken als ein serverweites Recht vergeben.
+- **Eine Person leitet immer nur eine Klasse.** Analog zur bestehenden
+  "ein Mitglied gehoert nur einer Klasse an"-Regel (`Member.classId`) entfernt `assignClassLead()`
+  automatisch eine bestehende Klassenleitungszuweisung derselben Person an einer anderen Klasse,
+  bevor die neue vergeben wird.
+- **Rolle bleibt bei Entfernung erhalten.** `removeClassLead()` loescht nur `leadDiscordId`, nicht
+  `leadRoleId` - eine spaetere Neuzuweisung muss die Rolle nicht neu anlegen (weniger
+  Rollen-Muell in Discord, gleiche Kanal-Overwrites bleiben gueltig).
+- **Fail-closed bei Manipulation.** `assertClassManagementAccess()` prueft ausschliesslich anhand
+  der tatsaechlichen Rollenmitgliedschaft (`member.roles.cache.has(klasse.leadRoleId)`) - ein
+  manipulierter `klasse`-Parameter in `/setup-klassenbereiche` (z. B. Klassenleitung A versucht
+  `klasse:B`) fuehrt zu einer `PermissionError`, unabhaengig davon, ob Klasse B ueberhaupt
+  existiert. Explizit mit der geforderten Testmatrix abgedeckt (A→A erlaubt, A→B/C verweigert,
+  B→A/C→A verweigert, siehe `tests/permissions.test.ts`).
 
 ## Sicherheitsueberlegungen
 
@@ -356,6 +456,18 @@ Design-Entscheidungen:
   Konvention wie "Kanal nicht verlinken". Fehlt dem Bot die Berechtigung zum Anlegen von
   Kanaelen, wird das (wie bei Rollenvergabe) in eine verstaendliche `ValidationError`
   uebersetzt statt eines stillen Fehlschlags.
+- Die Klassenleitungs-Rolle wird ausschliesslich mit `permissions: []` angelegt und vor jeder
+  Zuweisung erneut auf Administrator-Rechte geprueft (`assertRoleHasNoAdministrator()`) - selbst
+  eine nachtraeglich manuell in Discord veraenderte Rolle blockiert dann weitere Zuweisungen,
+  statt stillschweigend Admin-Rechte durchzureichen. Jedes tatsaechliche Recht der Klassenleitung
+  ist ein Kanal-Overwrite innerhalb der eigenen Klasse, nie eine globale Rollenberechtigung -
+  `Administrator`/`ManageGuild`/`ManageRoles`/`ManageChannels`/`ManageWebhooks`/`KickMembers`/
+  `BanMembers` kommen im gesamten Klassenleitungs-Code nicht vor.
+- Klassenbezogene Verwaltungsaktionen laufen ausnahmslos durch
+  `assertClassManagementAccess()`/`isClassLeadOf()` (`src/permissions/checkPermission.ts`) - fail
+  closed: fehlt die Klasse, die Rolle oder die Zuordnung, wird der Zugriff verweigert statt im
+  Zweifel erlaubt. Eine manipulierte Klassen-ID/ein manipulierter Command-Parameter kann dadurch
+  nie Zugriff auf eine fremde Klasse verschaffen (siehe Testmatrix in `tests/permissions.test.ts`).
 
 ## Roadmap der Kernfunktionen
 
@@ -378,18 +490,19 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
 7. ~~**Private Klassenbereiche**~~ - **umgesetzt.** Siehe Abschnitt
    ["Private Klassenbereiche" im README](./README.md#private-klassenbereiche) sowie
    "Private Klassenbereiche" oben. Nutzt `Class.categoryId` und die neuen Kanal-ID-Felder.
-8. **Klassenleitung mit administrativen Rechten nur fuer die eigene Klasse** - naechster
-   logischer Schritt. Berechtigungssystem (`PermissionLevel.KLASSENLEITUNG`, `isClassLeadOf()`),
-   Datenfeld (`Class.leadRoleId`) und die Permission-Overwrites in `classAreaService.ts` lesen
-   `leadRoleId` bereits mit; es fehlt noch ein Setup-Command, der `leadRoleId` befuellt (und bei
-   bereits bestehenden Klassenbereichen deren Kanal-Overwrites nachtraeglich aktualisiert), sowie
-   Klassenleitungs-Commands, die `isClassLeadOf()` fuer die jeweils betroffene Klasse pruefen.
-9. **Klausuren und Termine**
+8. ~~**Klassenleitung mit administrativen Rechten nur fuer die eigene Klasse**~~ - **umgesetzt.**
+   Siehe Abschnitt ["Klassenleitung" im README](./README.md#klassenleitung) sowie
+   "Klassenleitung" oben. `assertClassManagementAccess()` ist ab jetzt die zentrale Pruefung fuer
+   alle folgenden klassenbezogenen Funktionen (Punkte 9-12, 14).
+9. **Klausuren und Termine** - kann `assertClassManagementAccess()` direkt fuer die
+   Verwaltungsseite wiederverwenden; der Pruefungs-/Termine-Kanal existiert bereits
+   (`examChannelId`/`scheduleChannelId`).
 10. **Tages-/Wochenberichte**
-11. **Berichtsheft**
-12. **Lernmaterial**
+11. **Berichtsheft** - Kanal existiert bereits (`reportChannelId`).
+12. **Lernmaterial** - Kanal existiert bereits (`materialChannelId`).
 13. **Voice-Lerngruppen** - benoetigt zusaetzlichen Intent (`GuildVoiceStates` ist bereits aktiviert).
-14. **Moderation**
+14. **Moderation** - kann die bereits vergebenen Klassenleitungs-Overwrites (`ModerateMembers`,
+    `MuteMembers`/`DeafenMembers`/`MoveMembers`) direkt nutzen.
 15. **Logging** - baut auf `AuditLogEntry` auf.
 16. **Weitere Admin-Befehle**
 

@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
 import {
   getClassByName,
+  getClassLedByMember,
   getOrCreateClass,
   listClasses,
   updateClassChannels,
+  updateClassLead,
   updateClassRole,
 } from '../src/repositories/classRepository.js';
 
@@ -105,6 +107,65 @@ describe('classRepository', () => {
       expect(klasse.categoryId).toBe('cat-1');
       expect(klasse.chatChannelId).toBe('chat-1');
       expect(klasse.examChannelId).toBe('exam-1');
+    });
+  });
+
+  describe('updateClassLead / getClassLedByMember', () => {
+    it('setzt Klassenleitungs-Rolle und zugewiesene Person', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+
+      const klasse = await updateClassLead(guildId, 'A', {
+        leadRoleId: 'role-lead-a',
+        leadDiscordId: 'member-1',
+      });
+
+      expect(klasse.leadRoleId).toBe('role-lead-a');
+      expect(klasse.leadDiscordId).toBe('member-1');
+    });
+
+    it('findet die Klasse, deren Klassenleitung einer bestimmten Person zugewiesen ist', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+      await updateClassLead(guildId, 'A', { leadRoleId: 'role-lead-a', leadDiscordId: 'member-1' });
+      await updateClassLead(guildId, 'B', { leadRoleId: 'role-lead-b', leadDiscordId: 'member-2' });
+
+      const found = await getClassLedByMember(guildId, 'member-1');
+
+      expect(found?.name).toBe('A');
+    });
+
+    it('gibt null zurueck, wenn die Person keine Klassenleitung ist', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+
+      const found = await getClassLedByMember(guildId, 'member-unbekannt');
+
+      expect(found).toBeNull();
+    });
+
+    it('schliesst die uebergebene Klasse ueber excludeClassId aus (fuer Wechsel-Erkennung)', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+      const classA = await updateClassLead(guildId, 'A', {
+        leadRoleId: 'role-lead-a',
+        leadDiscordId: 'member-1',
+      });
+
+      const found = await getClassLedByMember(guildId, 'member-1', classA.id);
+
+      expect(found).toBeNull();
+    });
+
+    it('das Entfernen der Zuweisung (leadDiscordId: null) belaesst die Rolle', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+      await updateClassLead(guildId, 'A', { leadRoleId: 'role-lead-a', leadDiscordId: 'member-1' });
+
+      const klasse = await updateClassLead(guildId, 'A', { leadDiscordId: null });
+
+      expect(klasse.leadDiscordId).toBeNull();
+      expect(klasse.leadRoleId).toBe('role-lead-a');
     });
   });
 

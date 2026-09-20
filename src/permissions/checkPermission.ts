@@ -1,6 +1,7 @@
 import { PermissionFlagsBits, type GuildMember } from 'discord.js';
 import type { GuildConfig } from '@prisma/client';
 import { prisma } from '../db/client.js';
+import { PermissionError } from '../utils/errors.js';
 import { PermissionLevel } from './PermissionLevel.js';
 
 /** Serverbesitzer und Discord-"Administrator"-Rechteinhaber gelten immer als Bot-Admin. */
@@ -34,6 +35,28 @@ export async function isAnyClassLead(member: GuildMember): Promise<boolean> {
 export function isClassLeadOf(member: GuildMember, klasse: { leadRoleId: string | null }): boolean {
   if (!klasse.leadRoleId) return false;
   return member.roles.cache.has(klasse.leadRoleId);
+}
+
+/**
+ * Zentrale Zugriffspruefung fuer klassenbezogene Verwaltungsaktionen (z. B.
+ * Klassenbereich einrichten, kuenftig Termine/Berichtsheft/Lernmaterial
+ * verwalten): erlaubt ist ein globaler Admin ODER die Klassenleitung genau
+ * dieser Klasse - niemand sonst, unabhaengig davon, welche Klassen-ID/welcher
+ * Command-Parameter uebergeben wurde ("Fail closed"). Jede neue
+ * klassenbezogene Funktion soll diese Funktion verwenden, statt eine eigene
+ * Pruefung danebenzubauen.
+ */
+export function assertClassManagementAccess(
+  member: GuildMember,
+  guildConfig: GuildConfig,
+  klasse: { name: string; leadRoleId: string | null },
+): void {
+  if (isServerAdmin(member, guildConfig)) return;
+  if (isClassLeadOf(member, klasse)) return;
+  throw new PermissionError(
+    `Du bist weder Admin noch die Klassenleitung von Klasse ${klasse.name}. ` +
+      'Diese Aktion ist nur fuer die eigene Klasse erlaubt.',
+  );
 }
 
 /**

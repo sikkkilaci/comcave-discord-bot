@@ -16,7 +16,9 @@ describe('commandLoader', () => {
       onboarding: PermissionLevel.EVERYONE,
       'setup-klassen': PermissionLevel.ADMIN,
       'wo-bin-ich': PermissionLevel.EVERYONE,
-      'setup-klassenbereiche': PermissionLevel.ADMIN,
+      'setup-klassenbereiche': PermissionLevel.KLASSENLEITUNG,
+      'setup-klassenleitung': PermissionLevel.ADMIN,
+      'entferne-klassenleitung': PermissionLevel.ADMIN,
     };
 
     for (const [name, level] of Object.entries(expected)) {

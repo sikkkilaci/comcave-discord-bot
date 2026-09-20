@@ -53,6 +53,51 @@ const CHANNEL_BLUEPRINTS: readonly ChannelBlueprint[] = [
   { key: 'voiceChannelId', name: 'sprachkanal', type: ChannelType.GuildVoice },
 ];
 
+/**
+ * Rechte der Klassenleitungs-Rolle - ausschliesslich als Kanal-/Kategorie-
+ * Overwrite vergeben, NIE als Basis-Rollenberechtigung (siehe classLeadService.ts,
+ * wo die Rolle immer mit `permissions: []` angelegt wird). Dadurch wirken diese
+ * Rechte technisch nur innerhalb der eigenen Klassenkanaele, nicht serverweit.
+ *
+ * Deckt die geforderten Aktionen ab: Nachrichten senden/loeschen/anheften
+ * (ManageMessages), Dateien/PDFs hochladen (AttachFiles/EmbedLinks), Threads
+ * erstellen und verwalten, die eigene Klassenrolle erwaehnen (MentionEveryone -
+ * hier ungefaehrlich, da nur in den eigenen Klassenkanaelen wirksam) sowie den
+ * Klassen-Sprachkanal moderieren (Mute/Deafen/Move) und bei Bedarf einzelne
+ * Mitglieder des eigenen Klassenbereichs per Timeout moderieren (ModerateMembers -
+ * wirkt sich nur auf Mitglieder aus, die ueberhaupt in diesen privaten Kanaelen
+ * sichtbar sind, also ausschliesslich die eigene Klasse).
+ *
+ * Bewusst AUSGESCHLOSSEN (niemals Teil dieser Liste oder einer Basis-Rollen-
+ * berechtigung): Administrator, ManageGuild, ManageRoles, ManageChannels,
+ * ManageWebhooks, KickMembers, BanMembers und jede andere serverweite Rechte-
+ * Aenderung. "Termine/Events verwalten" wird bewusst NICHT ueber Discords
+ * natives Server-Event-System (ManageEvents) abgebildet, da dieses Recht sich
+ * in Discord nicht auf eine einzelne Klasse beschraenken laesst - stattdessen
+ * bekommt die Klassenleitung volle Nachrichtenkontrolle im dedizierten
+ * Termine-Kanal (siehe scheduleChannelId), was das eigentliche Bedürfnis
+ * abdeckt, ohne serverweite Rechte zu vergeben (Fail-closed-Entscheidung).
+ */
+const CLASS_LEAD_CHANNEL_PERMISSIONS: bigint[] = [
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.ReadMessageHistory,
+  PermissionFlagsBits.ManageMessages,
+  PermissionFlagsBits.AttachFiles,
+  PermissionFlagsBits.EmbedLinks,
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+  PermissionFlagsBits.SendMessagesInThreads,
+  PermissionFlagsBits.ManageThreads,
+  PermissionFlagsBits.MentionEveryone,
+  PermissionFlagsBits.Connect,
+  PermissionFlagsBits.Speak,
+  PermissionFlagsBits.MuteMembers,
+  PermissionFlagsBits.DeafenMembers,
+  PermissionFlagsBits.MoveMembers,
+  PermissionFlagsBits.ModerateMembers,
+];
+
 export interface ClassAreaSetupResult {
   className: string;
   categoryCreated: boolean;
@@ -229,17 +274,7 @@ function buildOverwrites(
   }
 
   if (klasse.leadRoleId) {
-    overwrites.push({
-      id: klasse.leadRoleId,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.ManageMessages,
-        PermissionFlagsBits.Connect,
-        PermissionFlagsBits.Speak,
-      ],
-    });
+    overwrites.push({ id: klasse.leadRoleId, allow: CLASS_LEAD_CHANNEL_PERMISSIONS });
   }
 
   return overwrites;

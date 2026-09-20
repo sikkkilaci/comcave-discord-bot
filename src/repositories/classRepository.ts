@@ -67,3 +67,38 @@ export async function updateClassChannels(
     data,
   });
 }
+
+export type ClassLeadUpdate = Partial<Pick<Class, 'leadRoleId' | 'leadDiscordId'>>;
+
+/** Persistiert Klassenleitungs-Rolle und/oder aktuell zugewiesene Person (siehe classLeadService.ts). */
+export async function updateClassLead(
+  guildId: string,
+  name: ClassName,
+  data: ClassLeadUpdate,
+): Promise<Class> {
+  await getOrCreateClass(guildId, name);
+  return prisma.class.update({
+    where: { guildId_name: { guildId, name } },
+    data,
+  });
+}
+
+/**
+ * Findet die Klasse, deren Klassenleitung aktuell dem angegebenen Mitglied
+ * zugewiesen ist (falls vorhanden). Wird bei einer Neuzuweisung genutzt, um
+ * eine bestehende andere Klassenleitungszuweisung derselben Person sauber
+ * aufzuloesen - eine Person ist immer nur Klassenleitung genau einer Klasse.
+ */
+export async function getClassLedByMember(
+  guildId: string,
+  discordId: string,
+  excludeClassId?: string,
+): Promise<Class | null> {
+  return prisma.class.findFirst({
+    where: {
+      guildId,
+      leadDiscordId: discordId,
+      ...(excludeClassId ? { NOT: { id: excludeClassId } } : {}),
+    },
+  });
+}

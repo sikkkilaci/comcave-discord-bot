@@ -93,6 +93,13 @@ model Class {
   categoryId  String? // Discord-Kategorie fuer den privaten Klassenbereich
   leadRoleId  String? // Rolle der Klassenleitung fuer diese Klasse
 
+  // Discord-ID der Person, die aktuell als Klassenleitung zugewiesen ist (falls
+  // vorhanden). Separat von leadRoleId, damit bei einer Neuzuweisung/Entfernung
+  // gezielt genau dieser Person die Rolle wieder entzogen werden kann, auch wenn
+  // sie z. B. gerade nicht im Guild-Cache ist. `null` bedeutet: Rolle existiert
+  // ggf. bereits (leadRoleId gesetzt), aber aktuell niemandem zugewiesen.
+  leadDiscordId String?
+
   // Kanal-IDs innerhalb des privaten Klassenbereichs (siehe classAreaService.ts).
   // Explizit persistiert statt per Namenssuche wiedergefunden, damit spaetere
   // Features (z. B. Berichtsheft, Termine) zuverlaessig auf den richtigen
@@ -111,6 +118,7 @@ model Class {
   members Member[]
 
   @@unique([guildId, name])
+  @@index([guildId, leadDiscordId])
 }
 
 /// Zentrales Audit-Log fuer administrative Aktionen und Moderation.
