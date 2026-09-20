@@ -1,0 +1,42 @@
+import type { Class } from '@prisma/client';
+import { prisma } from '../db/client.js';
+import type { ClassName } from '../types/domain.js';
+
+/**
+ * Liefert eine Klasse und legt sie bei Bedarf an (ohne Rolle - die wird
+ * separat ueber updateClassRole() gesetzt). So kann /setup-klassen die drei
+ * Klassen anlegen, ohne dass vorher eine manuelle Ersteinrichtung noetig ist.
+ */
+export async function getOrCreateClass(guildId: string, name: ClassName): Promise<Class> {
+  return prisma.class.upsert({
+    where: { guildId_name: { guildId, name } },
+    update: {},
+    create: { guildId, name },
+  });
+}
+
+export async function getClassByName(guildId: string, name: ClassName): Promise<Class | null> {
+  return prisma.class.findUnique({
+    where: { guildId_name: { guildId, name } },
+  });
+}
+
+export async function listClasses(guildId: string): Promise<Class[]> {
+  return prisma.class.findMany({
+    where: { guildId },
+    orderBy: { name: 'asc' },
+  });
+}
+
+/** Setzt die Discord-Rolle einer Klasse (siehe /setup-klassen). */
+export async function updateClassRole(
+  guildId: string,
+  name: ClassName,
+  roleId: string,
+): Promise<Class> {
+  await getOrCreateClass(guildId, name);
+  return prisma.class.update({
+    where: { guildId_name: { guildId, name } },
+    data: { roleId },
+  });
+}

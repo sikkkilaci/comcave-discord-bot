@@ -1,8 +1,13 @@
-import { DiscordAPIError, type GuildMember } from 'discord.js';
+import type { GuildMember } from 'discord.js';
 import type { GuildConfig, Member } from '@prisma/client';
-import { getOrCreateMember, setVerificationStatus } from '../repositories/memberRepository.js';
+import {
+  getMember,
+  getOrCreateMember,
+  setVerificationStatus,
+} from '../repositories/memberRepository.js';
 import { logAuditEvent } from '../repositories/auditLogRepository.js';
-import { ValidationError } from '../utils/errors.js';
+import { addRoleOrThrow, removeRoleOrThrow } from './discordRoleSync.js';
+import { PermissionError, ValidationError } from '../utils/errors.js';
 import type { VerificationStatus } from '../types/domain.js';
 import { createChildLogger } from '../utils/logger.js';
 
@@ -13,9 +18,6 @@ const AUDIT_ACTION_BY_STATUS: Record<VerificationStatus, string> = {
   REJECTED: 'member.reject',
   PENDING: 'member.reset',
 };
-
-/** Discord-API-Fehlercode fuer "Missing Permissions". */
-const DISCORD_MISSING_PERMISSIONS = 50013;
 
 export interface VerificationChangeResult {
   member: Member;
@@ -86,22 +88,34 @@ async function syncVerifiedRole(
 ): Promise<void> {
   const hasRole = targetMember.roles.cache.has(verifiedRoleId);
 
-  try {
-    if (status === 'VERIFIED' && !hasRole) {
-      await targetMember.roles.add(verifiedRoleId, 'Verifizierung: Status auf VERIFIED gesetzt');
-    } else if (status !== 'VERIFIED' && hasRole) {
-      await targetMember.roles.remove(
-        verifiedRoleId,
-        `Verifizierung: Status auf ${status} gesetzt`,
-      );
-    }
-  } catch (error) {
-    if (error instanceof DiscordAPIError && error.code === DISCORD_MISSING_PERMISSIONS) {
-      throw new ValidationError(
-        'Mir fehlt die Berechtigung, die Verifiziert-Rolle zu vergeben oder zu entziehen. ' +
-          'Bitte pruefe, ob meine Bot-Rolle in der Rollenhierarchie ueber dieser Rolle steht.',
-      );
-    }
-    throw error;
+  if (status === 'VERIFIED' && !hasRole) {
+    await addRoleOrThrow(
+      targetMember,
+      verifiedRoleId,
+      'Verifizierung: Status auf VERIFIED gesetzt',
+    );
+  } else if (status !== 'VERIFIED' && hasRole) {
+    await removeRoleOrThrow(
+      targetMember,
+      verifiedRoleId,
+      `Verifizierung: Status auf ${status} gesetzt`,
+    );
   }
+}
+
+/**
+ * Stellt sicher, dass ein Mitglied verifiziert ist, bevor es an Funktionen
+ * teilnimmt, die Verifizierung voraussetzen (Onboarding, Klassenauswahl).
+ * Zentraler Guard, der bei jedem Zugriff neu prueft statt nur einmalig -
+ * ein zwischenzeitlicher Statuswechsel (z. B. Admin setzt ein Mitglied
+ * zurueck) sperrt den weiteren Zugriff sofort.
+ */
+export async function assertMemberVerified(guildId: string, discordId: string): Promise<Member> {
+  const member = await getMember(guildId, discordId);
+  if (!member || member.verificationStatus !== 'VERIFIED') {
+    throw new PermissionError(
+      'Bitte verifiziere dich zuerst (Button oder /verifizieren), bevor du diese Funktion nutzt.',
+    );
+  }
+  return member;
 }

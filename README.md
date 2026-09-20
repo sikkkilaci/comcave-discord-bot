@@ -3,9 +3,10 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind zwei Kernfunktionen umgesetzt:
-**Verifizierung neuer Mitglieder** und **dynamisches Onboarding**. Weitere Fachfunktionen
-(Klassenverwaltung, Berichte, Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
+Berechtigungssystem, Command-/Event-Infrastruktur) sind drei Kernfunktionen umgesetzt:
+**Verifizierung neuer Mitglieder**, **dynamisches Onboarding** und **Klassenzuweisung A/B/C**.
+Weitere Fachfunktionen (private Klassenbereiche, Klassenleitung, Berichte, Moderation, ...)
+werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Verifizierung
@@ -57,6 +58,30 @@ unnoetigen personenbezogenen Daten zu erheben. `IT-Vorerfahrung` und `Interessen
 auf `Member.itExperienceLevel`/`Member.interests` denormalisiert, damit kuenftige Rollen- und
 Klassenlogik direkt darauf zugreifen kann, ohne den vollstaendigen Antwortverlauf durchsuchen zu
 muessen; die vollstaendige Historie bleibt unabhaengig davon in `OnboardingAnswer` erhalten.
+
+## Klassenzuweisung
+
+Ablauf:
+
+1. Ein Admin richtet die drei Klassen einmalig ein: `/setup-klassen klasse-a:<@Rolle> klasse-b:<@Rolle> klasse-c:<@Rolle> kanal:<#wo-bin-ich>`.
+   Das speichert die drei Klassenrollen und postet eine dauerhafte **#wo-bin-ich**-Nachricht mit
+   je einem Button pro Klasse in den angegebenen Kanal. Die Konfiguration wird abgelehnt, wenn
+   zwei Klassen dieselbe Rolle nutzen wuerden oder eine der Rollen Administrator-Rechte hat.
+2. Ein **verifiziertes** Mitglied klickt in #wo-bin-ich auf seine Klasse (oder nutzt `/wo-bin-ich`,
+   das dieselbe Auswahl privat/ephemer zeigt und die aktuelle Klasse hervorhebt) und erhaelt die
+   entsprechende Klassenrolle.
+3. Bei einem **Wechsel** wird automatisch zuerst die alte Klassenrolle entfernt, dann die neue
+   vergeben, `Member.classId` aktualisiert und ein Audit-Log-Eintrag geschrieben
+   (`class.assign` bei Erstzuweisung, `class.change` bei einem Wechsel, jeweils mit `from`/`to`
+   in den Metadaten). Ein Mitglied gehoert dadurch nie zwei Klassen gleichzeitig an.
+
+Unverifizierte Mitglieder erhalten beim Klick bzw. bei `/wo-bin-ich` eine klare Fehlermeldung statt
+einer Klassenzuweisung. Die dauerhafte #wo-bin-ich-Kanal-Nachricht bleibt fuer alle unveraendert
+sichtbar (nur eine private Bestaetigung an den klickenden Nutzer) - `/wo-bin-ich` zeigt dagegen eine
+persoenliche, ephemere Kopie, die sich beim Klick live aktualisiert.
+
+Alle Zustandsaenderungen laufen zentral durch `src/services/classService.ts::assignClass()`,
+verwendet sowohl vom Button-Handler als auch von `/wo-bin-ich` - keine doppelte Logik.
 
 ## Voraussetzungen
 
@@ -149,8 +174,10 @@ src/
   db/                          Prisma-Client-Singleton
   permissions/                  Berechtigungsstufen & -pruefung
   repositories/                   Datenzugriffsschicht (kapselt Prisma)
-  services/                         Fachlogik, z. B. verificationService.ts, onboardingService.ts,
-                                     onboardingFlow.ts (reine Fragen-/Skip-Logik ohne I/O)
+  services/                         Fachlogik: verificationService.ts, onboardingService.ts,
+                                     onboardingFlow.ts (reine Fragen-/Skip-Logik ohne I/O),
+                                     classService.ts, discordRoleSync.ts (gemeinsame
+                                     Rollenvergabe-Fehlerbehandlung)
   types/                              Gemeinsame TypeScript-Typen
   utils/                                Logger, Fehlerklassen
 prisma/
@@ -182,3 +209,7 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
 - Am Onboarding kann nur teilnehmen, wer laut Datenbank aktuell `VERIFIED` ist
   (`assertMemberVerified()`); das wird bei jedem Zugriff neu geprueft, nicht nur einmalig beim
   Start des Fragebogens.
+- Ebenso kann nur ein verifiziertes Mitglied eine Klasse auswaehlen (`assignClass()`/
+  `getCurrentClassName()` pruefen das jeweils selbst, nicht nur die aufrufende Command-Ebene).
+- `/setup-klassen` verweigert Rollen mit Administrator-Berechtigung als Klassenrolle - eine
+  Klassenzugehoerigkeit darf nie globale Admin-Rechte verleihen.

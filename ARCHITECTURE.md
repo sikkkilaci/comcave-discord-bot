@@ -50,8 +50,10 @@
   Klassenzuordnung.
 - `OnboardingAnswer`: Frage/Antwort-Paare fuer die dynamischen Onboarding-Folgefragen
   (append-only Historie, siehe Onboarding-Abschnitt unten).
-- `Class`: Klasse (A/B/C) mit zugehoeriger Rolle, privatem Kategorie-Channel und
-  Klassenleitungs-Rolle.
+- `Class`: Klasse (A/B/C) mit zugehoeriger Rolle (`roleId`, aktiv genutzt seit der
+  Klassenzuweisung), privatem Kategorie-Channel (`categoryId`, noch ungenutzt - naechster
+  Schritt "Private Klassenbereiche") und Klassenleitungs-Rolle (`leadRoleId`, noch ungenutzt -
+  naechster Schritt "Klassenleitung").
 - `AuditLogEntry`: Generisches Audit-Log fuer administrative Aktionen/Moderation.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
@@ -180,6 +182,67 @@ Design-Entscheidungen:
   und loggt sie, statt die gesamte Antwort (inklusive der bereits erfolgreichen
   Verifizierungsbestaetigung) scheitern zu lassen.
 
+### Klassenzuweisung A/B/C
+
+`#wo-bin-ich` als zentrale, dauerhafte Klassenauswahl - per Button, echte Discord-Rollen statt
+einer reinen DB-Markierung. Beteiligte Bausteine:
+
+- `src/services/discordRoleSync.ts` - aus der Verifizierung herausgeloeste, jetzt gemeinsam
+  genutzte Rollen-Helfer (`addRoleOrThrow`/`removeRoleOrThrow`) inkl. Uebersetzung von
+  Discord-Fehlercode `50013` in eine verstaendliche `ValidationError`. `verificationService.ts`
+  wurde im Zuge dessen auf diese Helfer umgestellt (Verhalten unveraendert, per Tests
+  abgesichert) - eine neue Rollenvergabe-Stelle (kuenftig z. B. Interessenrollen) muss diese
+  Uebersetzung nicht erneut implementieren.
+- `assertMemberVerified()` wurde von `onboardingService.ts` nach `verificationService.ts`
+  verschoben (dort thematisch beheimatet) und wird von dort re-exportiert, damit bestehender
+  Code ohne Anpassung weiterlaeuft. `classService.ts` importiert es kanonisch von dort - **eine**
+  Stelle definiert "was heisst verifiziert sein", genutzt von Onboarding und Klassenauswahl gleichermassen.
+- `src/repositories/classRepository.ts` - reiner Datenzugriff auf `Class` (anlegen, Rolle setzen,
+  nach Name suchen, auflisten).
+- `src/repositories/memberRepository.ts` - erweitert um `getMemberWithClass()` (Member inkl.
+  `class`-Relation) und `setMemberClass()`. Da `Member.classId` ein Einzelfeld ist (keine Liste),
+  erzwingt bereits das Datenmodell "eine Klasse gleichzeitig".
+- `src/services/classService.ts::assignClass()` - die eigentliche Geschaeftslogik, analog zu
+  `setMemberVerification()` aufgebaut: prueft Verifizierung, laedt Zielklasse (muss existieren
+  und eine Rolle haben, sonst `ValidationError`), entfernt bei einem Wechsel zuerst die alte
+  Rolle, vergibt dann die neue, aktualisiert `Member.classId` und schreibt einen Audit-Log-
+  Eintrag (`class.assign` bei Erstzuweisung, `class.change` bei einem Wechsel, Metadaten
+  `{ from, to }`). Prueft Discord-Rollenbesitz **und** DB-Zustand unabhaengig voneinander und
+  gleicht beides ab (self-healing), falls sie z. B. durch eine manuelle Rollenaenderung auf
+  Discord auseinanderlaufen sollten.
+- `src/bot/ui/classMessage.ts` - Embed + ein Button je Klasse; die aktuelle Klasse wird per
+  Button-Style (`Success` statt `Secondary`) hervorgehoben. Ein Rendering-Pfad fuer die
+  dauerhafte Kanal-Nachricht, `/wo-bin-ich` und den Zustand nach einem Wechsel.
+- `src/bot/events/interactionCreate.ts` - neuer Zweig fuer `class:select:*`-Buttons. Unterscheidet
+  anhand von `interaction.message.flags.has(MessageFlags.Ephemeral)`, ob die Original-Nachricht
+  die **dauerhafte, oeffentliche** Kanal-Nachricht ist (bleibt fuer alle unveraendert, nur eine
+  private Bestaetigung) oder die **persoenliche, ephemere** `/wo-bin-ich`-Antwort (darf sicher
+  per `interaction.update()` aktualisiert werden, da nur der klickende Nutzer sie sieht) - eine
+  einzelne geteilte Nachricht darf niemals den "aktuelle Klasse"-Zustand eines einzelnen Klicks
+  fuer alle anderen Betrachter ueberschreiben.
+- Commands: `/setup-klassen` (ADMIN; drei Rollen + Kanal, lehnt doppelt verwendete Rollen und
+  Rollen mit Administrator-Berechtigung ab), `/wo-bin-ich` (EVERYONE, aber `getCurrentClassName()`
+  weist unverifizierte Mitglieder ab).
+
+Design-Entscheidungen:
+
+- **Kein Schema-Update noetig.** `Class` (inkl. `roleId`, `categoryId`, `leadRoleId`) und
+  `Member.classId` waren bereits im Grundgeruest fuer genau diesen Zweck angelegt.
+- **Echte Discord-Rolle statt DB-Flag.** Die Klassenzugehoerigkeit wird ueber
+  `member.roles.add()`/`.remove()` durchgesetzt, nicht nur in der Datenbank vermerkt - nur so
+  greifen spaeter Kanal-Berechtigungen fuer private Klassenbereiche tatsaechlich.
+- **Keine Administrator-Rollen als Klassenrollen.** `roleHasAdministrator()`
+  (`src/bot/discordHelpers.ts`) prueft das bei `/setup-klassen` explizit, inklusive der
+  discord.js-Eigenheit, dass eine Rolle aus einer Interaktion typseitig entweder ein volles
+  `Role`-Objekt (`PermissionsBitField`) oder ein rohes `APIRole` (String-Bitfeld) sein kann.
+- **Klassenleitung bewusst noch nicht implementiert, aber vorbereitet.** Das bestehende
+  Berechtigungssystem (`PermissionLevel.KLASSENLEITUNG`, `isClassLeadOf()`) und das Datenfeld
+  `Class.leadRoleId` decken bereits ab, dass eine kuenftige Klassenleitung nur ihre _eigene_
+  Klasse verwalten darf; `assignClass()` und die Commands dieser Iteration vergeben oder nutzen
+  `leadRoleId` noch nicht.
+- **Oeffentliche Nachricht bleibt neutral.** Siehe `interactionCreate.ts`-Punkt oben - verhindert,
+  dass Klick A den fuer Klick B sichtbaren Zustand der geteilten Kanal-Nachricht verfaelscht.
+
 ## Sicherheitsueberlegungen
 
 - Keine Zugangsdaten im Repository (`.env` ignoriert, nur `.env.example` mit Platzhaltern).
@@ -198,6 +261,13 @@ Design-Entscheidungen:
 - Onboarding ist an den Verifizierungsstatus gekoppelt (`assertMemberVerified()`), nicht an eine
   einmalige Pruefung beim Start - ein zwischenzeitlicher Statuswechsel (z. B. Admin setzt ein
   Mitglied zurueck) sperrt den weiteren Fragebogen sofort beim naechsten Zugriff.
+- Klassenauswahl ist ebenso an den Verifizierungsstatus gekoppelt (`assignClass()`/
+  `getCurrentClassName()` rufen `assertMemberVerified()` bei jedem Aufruf auf) - kein
+  unverifiziertes Mitglied kann sich selbst eine Klassenrolle zuweisen.
+- Klassenrollen duerfen laut `/setup-klassen`-Validierung keine Administrator-Berechtigung
+  tragen - eine Klassenzugehoerigkeit kann nie versehentlich globale Admin-Rechte verleihen.
+- Ein Mitglied kann nie zwei Klassenrollen gleichzeitig besitzen: `assignClass()` entfernt die
+  alte Rolle immer, bevor die neue vergeben wird, und `Member.classId` ist ein Einzelfeld.
 
 ## Roadmap der Kernfunktionen
 
@@ -212,12 +282,17 @@ Die folgenden Funktionen sind der naechste Ausbauschritt auf Basis dieses Grundg
 3. ~~**Erfassung IT-Erfahrung und Interessen**~~ - **umgesetzt**, Teil des Onboarding-Flows
    (`Member.itExperienceLevel`/`Member.interests`).
 4. **Optionale Interessenrollen** - naechster logischer Schritt: Rollenvergabe basierend auf den
-   jetzt erfassten `Member.interests`.
-5. **Klassenzuweisung A/B/C** - nutzt `Class`/`Member.classId`.
-6. **`#wo-bin-ich` mit Auswahl A/B/C** - Self-Service-Variante der Klassenzuweisung.
-7. **Private Klassenbereiche** - Discord-Kategorien/Kanaele je `Class.categoryId`.
-8. **Klassenleitung mit administrativen Rechten nur fuer die eigene Klasse** - baut auf dem
-   bestehenden Berechtigungssystem auf (`isClassLeadOf`).
+   jetzt erfassten `Member.interests`. Kann `src/services/discordRoleSync.ts` direkt wiederverwenden.
+5. ~~**Klassenzuweisung A/B/C**~~ - **umgesetzt.** Nutzt `Class`/`Member.classId`, siehe
+   ["Klassenzuweisung" im README](./README.md#klassenzuweisung) und "Klassenzuweisung A/B/C" oben.
+6. ~~**`#wo-bin-ich` mit Auswahl A/B/C`**~~ - **umgesetzt** als Teil von Punkt 5 (dauerhafte
+Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternative).
+7. **Private Klassenbereiche** - naechster logischer Schritt: Discord-Kategorien/Kanaele je
+   `Class.categoryId` (Feld existiert bereits, wird aktuell noch nicht genutzt).
+8. **Klassenleitung mit administrativen Rechten nur fuer die eigene Klasse** - Berechtigungssystem
+   (`PermissionLevel.KLASSENLEITUNG`, `isClassLeadOf()`) und Datenfeld (`Class.leadRoleId`) sind
+   bereits vorbereitet; es fehlt noch ein Setup-Command, der `leadRoleId` befuellt, sowie
+   Klassenleitungs-Commands, die `isClassLeadOf()` fuer die jeweils betroffene Klasse pruefen.
 9. **Klausuren und Termine**
 10. **Tages-/Wochenberichte**
 11. **Berichtsheft**

@@ -1,4 +1,4 @@
-import type { Member } from '@prisma/client';
+import type { Class, Member } from '@prisma/client';
 import { prisma } from '../db/client.js';
 import type { ItExperienceLevel, VerificationStatus } from '../types/domain.js';
 
@@ -18,6 +18,36 @@ export async function getOrCreateMember(guildId: string, discordId: string): Pro
 export async function getMember(guildId: string, discordId: string): Promise<Member | null> {
   return prisma.member.findUnique({
     where: { guildId_discordId: { guildId, discordId } },
+  });
+}
+
+export type MemberWithClass = Member & { class: Class | null };
+
+/** Wie getMember(), laedt aber zusaetzlich die aktuell zugeordnete Klasse (falls vorhanden). */
+export async function getMemberWithClass(
+  guildId: string,
+  discordId: string,
+): Promise<MemberWithClass | null> {
+  return prisma.member.findUnique({
+    where: { guildId_discordId: { guildId, discordId } },
+    include: { class: true },
+  });
+}
+
+/**
+ * Setzt (oder loescht mit `null`) die Klassenzuordnung eines Mitglieds. Ein
+ * Mitglied kann laut Datenmodell (`Member.classId`, einzelnes Feld statt
+ * Liste) immer nur einer Klasse gleichzeitig angehoeren.
+ */
+export async function setMemberClass(
+  guildId: string,
+  discordId: string,
+  classId: string | null,
+): Promise<Member> {
+  await getOrCreateMember(guildId, discordId);
+  return prisma.member.update({
+    where: { guildId_discordId: { guildId, discordId } },
+    data: { classId },
   });
 }
 

@@ -13,6 +13,7 @@ import { getOrCreateGuildConfig } from '../../repositories/guildConfigRepository
 import { hasPermissionLevel } from '../../permissions/checkPermission.js';
 import { setMemberVerification } from '../../services/verificationService.js';
 import { assertMemberVerified, submitAnswer } from '../../services/onboardingService.js';
+import { assignClass } from '../../services/classService.js';
 import { VERIFY_BUTTON_CUSTOM_ID } from '../ui/verificationMessage.js';
 import {
   ONBOARDING_RESTART_CUSTOM_ID,
@@ -21,7 +22,9 @@ import {
   buildSafeOnboardingReplyPart,
   parseAnswerCustomId,
 } from '../ui/onboardingMessage.js';
+import { buildClassSelectionMessage, parseClassCustomId } from '../ui/classMessage.js';
 import { findGuildMemberAcrossGuilds } from '../discordHelpers.js';
+import { CLASS_NAME_LABELS, type ClassName } from '../../types/domain.js';
 import { AppError } from '../../utils/errors.js';
 import { createChildLogger } from '../../utils/logger.js';
 
@@ -112,6 +115,12 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 
   if (interaction.customId === ONBOARDING_RESTART_CUSTOM_ID) {
     await handleOnboardingRestart(interaction);
+    return;
+  }
+
+  const className = parseClassCustomId(interaction.customId);
+  if (className) {
+    await handleClassSelect(interaction, className);
   }
 }
 
@@ -149,6 +158,46 @@ async function handleOnboardingRestart(interaction: ButtonInteraction): Promise<
     await assertMemberVerified(member.guild.id, member.id);
     const { embeds, components } = buildOnboardingStepMessage('IT_EXPERIENCE');
     await interaction.update({ embeds, components });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/**
+ * Verarbeitet einen Klick auf einen Klassen-Button. Unterscheidet, ob der
+ * Klick von der dauerhaften, oeffentlichen #wo-bin-ich-Kanal-Nachricht kommt
+ * (bleibt fuer alle unveraendert, nur eine private Bestaetigung) oder von der
+ * persoenlichen, ephemeren /wo-bin-ich-Antwort (darf sicher aktualisiert
+ * werden, da sie nur der klickende Nutzer sieht).
+ */
+async function handleClassSelect(
+  interaction: ButtonInteraction,
+  className: ClassName,
+): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    const result = await assignClass(member, guildConfig, className, member.id);
+
+    const content = result.changed
+      ? result.previousClassName
+        ? `Du wurdest von ${CLASS_NAME_LABELS[result.previousClassName]} zu ` +
+          `${CLASS_NAME_LABELS[result.newClassName]} verschoben. 🎉`
+        : `Du bist jetzt in ${CLASS_NAME_LABELS[result.newClassName]}! 🎉`
+      : `Du bist bereits in ${CLASS_NAME_LABELS[result.newClassName]}.`;
+
+    if (interaction.message.flags.has(MessageFlags.Ephemeral)) {
+      const { embeds, components } = buildClassSelectionMessage(result.newClassName);
+      await interaction.update({ embeds, components });
+      await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+    } else {
+      await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+    }
   } catch (error) {
     await handleInteractionError(interaction, error);
   }

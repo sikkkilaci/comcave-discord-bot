@@ -1,7 +1,14 @@
-import type { GuildMember } from 'discord.js';
+import {
+  PermissionFlagsBits,
+  PermissionsBitField,
+  type APIRole,
+  type GuildMember,
+  type Role,
+} from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   findGuildMemberAcrossGuilds,
+  roleHasAdministrator,
   type GuildMemberFetchable,
 } from '../src/bot/discordHelpers.js';
 
@@ -48,5 +55,37 @@ describe('findGuildMemberAcrossGuilds', () => {
   it('gibt null bei einer leeren Guild-Liste zurueck', async () => {
     const result = await findGuildMemberAcrossGuilds([], 'user-1');
     expect(result).toBeNull();
+  });
+});
+
+describe('roleHasAdministrator', () => {
+  it('erkennt eine Rolle (Role-Objekt) mit Administrator-Berechtigung', () => {
+    const role = {
+      permissions: new PermissionsBitField(PermissionFlagsBits.Administrator),
+    } as unknown as Role;
+
+    expect(roleHasAdministrator(role)).toBe(true);
+  });
+
+  it('erkennt eine Rolle (Role-Objekt) ohne Administrator-Berechtigung', () => {
+    const role = {
+      permissions: new PermissionsBitField(PermissionFlagsBits.SendMessages),
+    } as unknown as Role;
+
+    expect(roleHasAdministrator(role)).toBe(false);
+  });
+
+  it('erkennt Administrator-Berechtigung bei einer rohen APIRole (String-Bitfeld)', () => {
+    const role = {
+      permissions: PermissionFlagsBits.Administrator.toString(),
+    } as unknown as APIRole;
+
+    expect(roleHasAdministrator(role)).toBe(true);
+  });
+
+  it('erkennt fehlende Administrator-Berechtigung bei einer rohen APIRole', () => {
+    const role = { permissions: PermissionFlagsBits.SendMessages.toString() } as unknown as APIRole;
+
+    expect(roleHasAdministrator(role)).toBe(false);
   });
 });

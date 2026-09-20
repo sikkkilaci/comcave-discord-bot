@@ -1,4 +1,4 @@
-import type { GuildMember } from 'discord.js';
+import { PermissionFlagsBits, type APIRole, type GuildMember, type Role } from 'discord.js';
 
 /** Minimale Teilmenge von discord.js' `Guild`, die fuer die Mitgliedersuche noetig ist. */
 export interface GuildMemberFetchable {
@@ -30,4 +30,24 @@ export async function findGuildMemberAcrossGuilds(
   }
 
   return null;
+}
+
+/**
+ * Prueft, ob eine Rolle die Administrator-Berechtigung traegt. Wird von
+ * Setup-Commands verwendet, um zu verhindern, dass eine Rolle mit globalen
+ * Admin-Rechten versehentlich als Klassen-/Interessenrolle konfiguriert wird.
+ *
+ * `interaction.options.getRole()` liefert typseitig `Role | APIRole`: bei
+ * einer echten Guild-Interaktion ist es praktisch immer ein voll aufgeloestes
+ * `Role`-Objekt, aber `APIRole` traegt Berechtigungen nur als rohen
+ * String-Bitfeld statt eines `PermissionsBitField` - daher die Fallunterscheidung.
+ */
+export function roleHasAdministrator(role: Role | APIRole): boolean {
+  if (typeof role.permissions === 'string') {
+    return (
+      (BigInt(role.permissions) & PermissionFlagsBits.Administrator) ===
+      PermissionFlagsBits.Administrator
+    );
+  }
+  return role.permissions.has(PermissionFlagsBits.Administrator);
 }

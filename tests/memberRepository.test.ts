@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
+import { getOrCreateClass } from '../src/repositories/classRepository.js';
 import {
   getMember,
+  getMemberWithClass,
   getOrCreateMember,
+  setMemberClass,
   setVerificationStatus,
 } from '../src/repositories/memberRepository.js';
 
@@ -99,6 +102,54 @@ describe('memberRepository', () => {
 
       expect(updated.verificationStatus).toBe('PENDING');
       expect(updated.verifiedAt).toBeNull();
+    });
+  });
+
+  describe('getMemberWithClass / setMemberClass', () => {
+    it('liefert class: null, wenn keine Klasse zugewiesen ist', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+      await getOrCreateMember(guildId, 'discord-user-1');
+
+      const member = await getMemberWithClass(guildId, 'discord-user-1');
+
+      expect(member?.class).toBeNull();
+    });
+
+    it('setzt die Klassenzuordnung und laedt sie inklusive Relation', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+      const klasse = await getOrCreateClass(guildId, 'A');
+
+      await setMemberClass(guildId, 'discord-user-1', klasse.id);
+      const member = await getMemberWithClass(guildId, 'discord-user-1');
+
+      expect(member?.classId).toBe(klasse.id);
+      expect(member?.class?.name).toBe('A');
+    });
+
+    it('kann die Klassenzuordnung wieder auf null setzen', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+      const klasse = await getOrCreateClass(guildId, 'A');
+      await setMemberClass(guildId, 'discord-user-1', klasse.id);
+
+      await setMemberClass(guildId, 'discord-user-1', null);
+      const member = await getMemberWithClass(guildId, 'discord-user-1');
+
+      expect(member?.classId).toBeNull();
+      expect(member?.class).toBeNull();
+    });
+
+    it('legt das Mitglied bei Bedarf automatisch an', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+      const klasse = await getOrCreateClass(guildId, 'B');
+
+      const updated = await setMemberClass(guildId, 'discord-user-neu', klasse.id);
+
+      expect(updated.discordId).toBe('discord-user-neu');
+      expect(updated.classId).toBe(klasse.id);
     });
   });
 });

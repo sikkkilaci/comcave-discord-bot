@@ -94,3 +94,19 @@ export const INTEREST_LABELS: Record<Interest, string> = {
   SUPPORT_HELPDESK: 'Support / Helpdesk',
   SONSTIGES: 'Sonstiges',
 };
+
+/**
+ * Klassen der Lerngruppe. Bewusst auf genau drei feste Klassen beschraenkt
+ * (siehe Anforderung "Klassenzuweisung A/B/C"); `Class.name` in der
+ * Datenbank ist trotzdem ein generisches String-Feld, falls spaeter weitere
+ * Klassen benoetigt werden sollten.
+ */
+export const CLASS_NAMES = ['A', 'B', 'C'] as const;
+export const classNameSchema = z.enum(CLASS_NAMES);
+export type ClassName = z.infer<typeof classNameSchema>;
+
+export const CLASS_NAME_LABELS: Record<ClassName, string> = {
+  A: 'Klasse A',
+  B: 'Klasse B',
+  C: 'Klasse C',
+};
