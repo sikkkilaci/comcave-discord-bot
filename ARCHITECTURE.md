@@ -71,14 +71,26 @@ Faustregeln:
   Klassenzuordnung.
 - `OnboardingAnswer`: Frage/Antwort-Paare fuer die dynamischen Onboarding-Folgefragen
   (append-only Historie, siehe Onboarding-Abschnitt unten).
-- `Class`: Klasse (A/B/C) mit zugehoeriger Rolle (`roleId`, aktiv genutzt seit der
-  Klassenzuweisung), privatem Kategorie-Channel (`categoryId`, noch ungenutzt - naechster
-  Schritt "Private Klassenbereiche") und Klassenleitungs-Rolle (`leadRoleId`, noch ungenutzt -
-  naechster Schritt "Klassenleitung").
+- `Class`: Klasse (A/B/C) mit zugehoeriger Rolle (`roleId`), privatem Kategorie-Channel
+  (`categoryId`) und den sieben Kanal-IDs des privaten Klassenbereichs
+  (`chatChannelId`/`announcementChannelId`/`scheduleChannelId`/`examChannelId`/
+  `reportChannelId`/`materialChannelId`/`voiceChannelId`, siehe "Private Klassenbereiche"
+  unten) sowie einer Klassenleitungs-Rolle (`leadRoleId`, noch ungenutzt - naechster Schritt
+  "Klassenleitung").
 - `AuditLogEntry`: Generisches Audit-Log fuer administrative Aktionen/Moderation.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
 daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt.
+
+> **Migration `add_class_area_channels`:** Die sieben Kanal-Felder auf `Class` sind die einzige
+> Schema-Aenderung seit dem Grundgeruest, die tatsaechlich neue Spalten braucht (rein additiv,
+> nullable, keine Datenmigration noetig). Begruendung: `categoryId` existierte zwar bereits, aber
+> ohne die IDs der einzelnen Kanaele darin muesste jede zukuenftige Funktion, die auf einen
+> bestimmten Kanal verweisen will (z. B. ein spaeteres `/berichtsheft`-Command), diesen per
+> Namenssuche in der Kategorie wiederfinden - fragil, sobald ein Kanal umbenannt wird. Die IDs
+> direkt und flach auf `Class` zu speichern (statt eines eigenen Nebenmodells fuer eine feste,
+> nicht-dynamische 1:1-Menge von sieben Kanaelen) entspricht dem bereits etablierten Stil von
+> `roleId`/`categoryId`/`leadRoleId`.
 
 ## Implementierte Kernfunktionen
 
@@ -264,6 +276,56 @@ Design-Entscheidungen:
 - **Oeffentliche Nachricht bleibt neutral.** Siehe `interactionCreate.ts`-Punkt oben - verhindert,
   dass Klick A den fuer Klick B sichtbaren Zustand der geteilten Kanal-Nachricht verfaelscht.
 
+### Private Klassenbereiche
+
+Jede Klasse bekommt eine eigene, fuer `@everyone` unsichtbare Kategorie mit sieben Kanaelen -
+durchgesetzt ueber echte Discord-Permission-Overwrites, nicht nur durch Kanal-Anordnung oder
+Konvention. Beteiligte Bausteine:
+
+- `src/services/classAreaService.ts::setupClassArea()` - legt die Kategorie und die sieben
+  Kanaele an (`CHANNEL_BLUEPRINTS`: Klassenchat, Ankuendigungen, Termine, Pruefungen,
+  Berichtsheft, Lernmaterial, Sprachkanal). Kategorie **und** jeder einzelne Kanal werden
+  unabhaengig voneinander per `guild.channels.fetch()` auf Idempotenz geprueft - ein erneuter
+  Aufruf legt nichts doppelt an und repariert nur fehlende/geloeschte Kanaele einzeln nach,
+  ohne bestehende anzufassen (dieselbe "erneuter Aufruf ist sicher"-Philosophie wie bei
+  Verifizierung/Onboarding/Klassenauswahl).
+- `buildOverwrites()` baut fuer Kategorie und jeden Kanal denselben Basissatz an Overwrites:
+  `@everyone` verliert `ViewChannel`; die Klassenrolle bekommt `ViewChannel`/`ReadMessageHistory`/
+  `Connect`/`Speak` und (ausser im Ankuendigungen-Kanal) `SendMessages`/`AttachFiles`/
+  `EmbedLinks`; die konfigurierte Admin-Rolle (`GuildConfig.adminRoleId`) bekommt volle
+  Sichtbarkeit; eine bereits gesetzte Klassenleitungs-Rolle (`Class.leadRoleId`) bekommt
+  zusaetzlich `ManageMessages` - **auch im Ankuendigungen-Kanal**, da bei einem Konflikt
+  zwischen zwei Rollen-Overwrites (Klassenrolle denied SendMessages, Klassenleitung erlaubt es)
+  Discord den Allow-Overwrite gewinnen laesst.
+- `createChannelOrThrow()` uebersetzt Discord-Fehlercode `50013` (fehlende "Kanaele verwalten"-
+  Berechtigung) in eine verstaendliche `ValidationError`, nach demselben Muster wie
+  `discordRoleSync.ts`.
+- Command: `/setup-klassenbereiche` (ADMIN, optionaler `klasse`-Parameter fuer nur eine Klasse)
+  - ueberspringt Klassen ohne konfigurierte Rolle mit einem klaren Hinweis auf `/setup-klassen`,
+    fasst Ergebnis pro Klasse in einer Zeile zusammen (neu angelegt / repariert / bereits
+    vollstaendig) und schreibt einen `class.area_setup`-Audit-Log-Eintrag pro tatsaechlich
+    veraenderter Klasse.
+
+Design-Entscheidungen:
+
+- **Schema-Erweiterung bewusst und minimal.** Siehe Migrations-Hinweis im Datenmodell-Abschnitt
+  oben - sieben neue nullable Spalten, keine neue Tabelle, keine Datenmigration.
+- **Nur "Ankuendigungen" ist read-only fuer die Klasse.** Alle anderen Kanaele (auch
+  Lernmaterial und Pruefungen) bleiben voll beschreibbar, weil z. B. das Berichtsheft von den
+  Mitgliedern selbst befuellt wird und die Anforderung keine weitere Differenzierung vorgibt.
+  Admins koennen einzelne Kanal-Berechtigungen bei Bedarf manuell in Discord nachjustieren.
+- **Kanal-/Kategorienamen bewusst ohne Emoji.** Anders als Buttons/Embeds (siehe
+  "UI-Konventionen: Emojis" oben) bleiben Kanalnamen reiner ASCII-Text, um jedes Risiko von
+  Sonderzeichen-Normalisierungsproblemen bei der Discord-API zu vermeiden, die ohne echten
+  Token/Server-Verbindung nicht verifizierbar waeren.
+- **Klassenleitung weiterhin vorbereitet, nicht abgeschlossen.** `buildOverwrites()` liest
+  `Class.leadRoleId` bereits mit; sobald ein kuenftiges Setup-Command diese Rolle setzt, greift
+  die Berechtigung fuer danach **neu angelegte** Klassenbereiche automatisch. Fuer zu diesem
+  Zeitpunkt bereits bestehende Kanaele braucht es dann zusaetzlich einen "Berechtigungen
+  neu anwenden"-Mechanismus (z. B. ein `/setup-klassenbereiche` erneut ausfuehren mit einer
+  spaeteren Erweiterung, die auch bestehende Kanal-Overwrites aktualisiert statt nur fehlende
+  Kanaele zu ergaenzen) - bewusst nicht Teil dieser Iteration.
+
 ## Sicherheitsueberlegungen
 
 - Keine Zugangsdaten im Repository (`.env` ignoriert, nur `.env.example` mit Platzhaltern).
@@ -289,6 +351,11 @@ Design-Entscheidungen:
   tragen - eine Klassenzugehoerigkeit kann nie versehentlich globale Admin-Rechte verleihen.
 - Ein Mitglied kann nie zwei Klassenrollen gleichzeitig besitzen: `assignClass()` entfernt die
   alte Rolle immer, bevor die neue vergeben wird, und `Member.classId` ist ein Einzelfeld.
+- Private Klassenbereiche sind ueber echte Discord-Permission-Overwrites abgesichert
+  (`@everyone` verliert `ViewChannel` auf Kategorie und jedem Kanal), nicht durch eine reine
+  Konvention wie "Kanal nicht verlinken". Fehlt dem Bot die Berechtigung zum Anlegen von
+  Kanaelen, wird das (wie bei Rollenvergabe) in eine verstaendliche `ValidationError`
+  uebersetzt statt eines stillen Fehlschlags.
 
 ## Roadmap der Kernfunktionen
 
@@ -308,11 +375,14 @@ Die folgenden Funktionen sind der naechste Ausbauschritt auf Basis dieses Grundg
    ["Klassenzuweisung" im README](./README.md#klassenzuweisung) und "Klassenzuweisung A/B/C" oben.
 6. ~~**`#wo-bin-ich` mit Auswahl A/B/C`**~~ - **umgesetzt** als Teil von Punkt 5 (dauerhafte
 Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternative).
-7. **Private Klassenbereiche** - naechster logischer Schritt: Discord-Kategorien/Kanaele je
-   `Class.categoryId` (Feld existiert bereits, wird aktuell noch nicht genutzt).
-8. **Klassenleitung mit administrativen Rechten nur fuer die eigene Klasse** - Berechtigungssystem
-   (`PermissionLevel.KLASSENLEITUNG`, `isClassLeadOf()`) und Datenfeld (`Class.leadRoleId`) sind
-   bereits vorbereitet; es fehlt noch ein Setup-Command, der `leadRoleId` befuellt, sowie
+7. ~~**Private Klassenbereiche**~~ - **umgesetzt.** Siehe Abschnitt
+   ["Private Klassenbereiche" im README](./README.md#private-klassenbereiche) sowie
+   "Private Klassenbereiche" oben. Nutzt `Class.categoryId` und die neuen Kanal-ID-Felder.
+8. **Klassenleitung mit administrativen Rechten nur fuer die eigene Klasse** - naechster
+   logischer Schritt. Berechtigungssystem (`PermissionLevel.KLASSENLEITUNG`, `isClassLeadOf()`),
+   Datenfeld (`Class.leadRoleId`) und die Permission-Overwrites in `classAreaService.ts` lesen
+   `leadRoleId` bereits mit; es fehlt noch ein Setup-Command, der `leadRoleId` befuellt (und bei
+   bereits bestehenden Klassenbereichen deren Kanal-Overwrites nachtraeglich aktualisiert), sowie
    Klassenleitungs-Commands, die `isClassLeadOf()` fuer die jeweils betroffene Klasse pruefen.
 9. **Klausuren und Termine**
 10. **Tages-/Wochenberichte**

@@ -3,9 +3,9 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind drei Kernfunktionen umgesetzt:
-**Verifizierung neuer Mitglieder**, **dynamisches Onboarding** und **Klassenzuweisung A/B/C**.
-Weitere Fachfunktionen (private Klassenbereiche, Klassenleitung, Berichte, Moderation, ...)
+Berechtigungssystem, Command-/Event-Infrastruktur) sind vier Kernfunktionen umgesetzt:
+**Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C** und
+**private Klassenbereiche**. Weitere Fachfunktionen (Klassenleitung, Berichte, Moderation, ...)
 werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
@@ -82,6 +82,26 @@ persoenliche, ephemere Kopie, die sich beim Klick live aktualisiert.
 
 Alle Zustandsaenderungen laufen zentral durch `src/services/classService.ts::assignClass()`,
 verwendet sowohl vom Button-Handler als auch von `/wo-bin-ich` - keine doppelte Logik.
+
+## Private Klassenbereiche
+
+Nachdem die Klassenrollen mit `/setup-klassen` stehen, richtet ein Admin mit
+`/setup-klassenbereiche` (optional mit `klasse:<A|B|C>` fuer nur eine Klasse) pro Klasse eine
+eigene, unsichtbare Kategorie mit sieben Kanaelen ein:
+
+- 💬 **Klassenchat** - freie Diskussion
+- 📢 **Ankuendigungen** - nur lesbar fuer die Klasse (Admins/Klassenleitung koennen posten)
+- 📅 **Termine**
+- 🎓 **Pruefungen**
+- 📝 **Berichtsheft** - fuer Tages-/Wochenberichte der Mitglieder
+- 📚 **Lernmaterial**
+- 🔊 **Sprachkanal**
+
+Die Kategorie ist fuer `@everyone` unsichtbar und nur fuer die jeweilige Klassenrolle (sowie die
+konfigurierte Admin-Rolle) sichtbar - echte Discord-Permission-Overwrites, keine reine
+Konvention. Der Befehl ist **pro Kanal idempotent**: ein erneuter Aufruf legt nichts doppelt an,
+sondern ergaenzt nur fehlende Kanaele (z. B. wenn einer versehentlich geloescht wurde) und laesst
+alle bestehenden unangetastet.
 
 ## Voraussetzungen
 
@@ -176,7 +196,8 @@ src/
   repositories/                   Datenzugriffsschicht (kapselt Prisma)
   services/                         Fachlogik: verificationService.ts, onboardingService.ts,
                                      onboardingFlow.ts (reine Fragen-/Skip-Logik ohne I/O),
-                                     classService.ts, discordRoleSync.ts (gemeinsame
+                                     classService.ts, classAreaService.ts (private
+                                     Klassenbereiche), discordRoleSync.ts (gemeinsame
                                      Rollenvergabe-Fehlerbehandlung)
   types/                              Gemeinsame TypeScript-Typen
   utils/                                Logger, Fehlerklassen
@@ -213,3 +234,5 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   `getCurrentClassName()` pruefen das jeweils selbst, nicht nur die aufrufende Command-Ebene).
 - `/setup-klassen` verweigert Rollen mit Administrator-Berechtigung als Klassenrolle - eine
   Klassenzugehoerigkeit darf nie globale Admin-Rechte verleihen.
+- Private Klassenbereiche sind ueber echte Discord-Permission-Overwrites abgesichert
+  (`@everyone` explizit ausgeschlossen), nicht nur durch Konvention oder Kanal-Anordnung.

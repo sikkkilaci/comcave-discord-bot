@@ -40,3 +40,30 @@ export async function updateClassRole(
     data: { roleId },
   });
 }
+
+export type ClassChannelUpdate = Partial<
+  Pick<
+    Class,
+    | 'categoryId'
+    | 'chatChannelId'
+    | 'announcementChannelId'
+    | 'scheduleChannelId'
+    | 'examChannelId'
+    | 'reportChannelId'
+    | 'materialChannelId'
+    | 'voiceChannelId'
+  >
+>;
+
+/** Persistiert die Kanal-/Kategorie-IDs des privaten Klassenbereichs (siehe classAreaService.ts). */
+export async function updateClassChannels(
+  guildId: string,
+  name: ClassName,
+  data: ClassChannelUpdate,
+): Promise<Class> {
+  await getOrCreateClass(guildId, name);
+  return prisma.class.update({
+    where: { guildId_name: { guildId, name } },
+    data,
+  });
+}

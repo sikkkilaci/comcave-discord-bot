@@ -93,6 +93,18 @@ model Class {
   categoryId  String? // Discord-Kategorie fuer den privaten Klassenbereich
   leadRoleId  String? // Rolle der Klassenleitung fuer diese Klasse
 
+  // Kanal-IDs innerhalb des privaten Klassenbereichs (siehe classAreaService.ts).
+  // Explizit persistiert statt per Namenssuche wiedergefunden, damit spaetere
+  // Features (z. B. Berichtsheft, Termine) zuverlaessig auf den richtigen
+  // Kanal verweisen koennen, auch wenn er umbenannt wird.
+  chatChannelId         String? // Klassenchat
+  announcementChannelId String? // Ankuendigungen (read-only fuer die Klasse)
+  scheduleChannelId     String? // Termine
+  examChannelId         String? // Pruefungen
+  reportChannelId       String? // Berichtsheft / Tagesberichte
+  materialChannelId     String? // Lernmaterial
+  voiceChannelId        String? // Klassen-Sprachkanal
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

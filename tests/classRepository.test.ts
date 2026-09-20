@@ -5,6 +5,7 @@ import {
   getClassByName,
   getOrCreateClass,
   listClasses,
+  updateClassChannels,
   updateClassRole,
 } from '../src/repositories/classRepository.js';
 
@@ -74,6 +75,36 @@ describe('classRepository', () => {
       const klasse = await updateClassRole(guildId, 'A', 'role-a-neu');
 
       expect(klasse.roleId).toBe('role-a-neu');
+    });
+  });
+
+  describe('updateClassChannels', () => {
+    it('setzt Kategorie- und Kanal-IDs (legt die Klasse bei Bedarf an)', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+
+      const klasse = await updateClassChannels(guildId, 'A', {
+        categoryId: 'cat-1',
+        chatChannelId: 'chat-1',
+        voiceChannelId: 'voice-1',
+      });
+
+      expect(klasse.categoryId).toBe('cat-1');
+      expect(klasse.chatChannelId).toBe('chat-1');
+      expect(klasse.voiceChannelId).toBe('voice-1');
+      expect(klasse.announcementChannelId).toBeNull();
+    });
+
+    it('aktualisiert nur die uebergebenen Felder, andere bleiben unveraendert', async () => {
+      const guildId = uniqueGuildId();
+      await getOrCreateGuildConfig(guildId);
+      await updateClassChannels(guildId, 'A', { categoryId: 'cat-1', chatChannelId: 'chat-1' });
+
+      const klasse = await updateClassChannels(guildId, 'A', { examChannelId: 'exam-1' });
+
+      expect(klasse.categoryId).toBe('cat-1');
+      expect(klasse.chatChannelId).toBe('chat-1');
+      expect(klasse.examChannelId).toBe('exam-1');
     });
   });
 
