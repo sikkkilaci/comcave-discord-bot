@@ -2,11 +2,31 @@
 
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
-Dieses Repository enthaelt aktuell das **technische Grundgeruest** des Projekts:
-Konfiguration, Logging, Datenpersistenz, Berechtigungssystem, Command-/Event-Infrastruktur
-sowie zwei Beispiel-Commands. Die eigentlichen Fachfunktionen (Verifizierung, Onboarding,
-Klassenverwaltung, Berichte, Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
+Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
+Berechtigungssystem, Command-/Event-Infrastruktur) ist die erste Kernfunktion umgesetzt:
+**Verifizierung neuer Mitglieder**. Weitere Fachfunktionen (Onboarding, Klassenverwaltung,
+Berichte, Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
+## Verifizierung
+
+Ablauf:
+
+1. Ein Admin richtet die Verifizierung einmalig ein: `/setup-verifizierung rolle:<@Rolle> kanal:<#Kanal>`.
+   Das speichert die Verifiziert-Rolle und postet eine dauerhafte Verifizierungsnachricht mit
+   Button im angegebenen Kanal.
+2. Tritt ein neues Mitglied dem Server bei, legt der Bot automatisch einen Datenbank-Eintrag
+   (Status `PENDING`) an und versucht, ihm dieselbe Verifizierungsnachricht per DM zu senden
+   (schlaegt das fehl, z. B. weil DMs deaktiviert sind, bleibt der Kanal-Button nutzbar).
+3. Das Mitglied klickt auf **"Ich bin verifiziert"** (oder nutzt `/verifizieren`) und erhaelt
+   die konfigurierte Rolle; der Status wird auf `VERIFIED` gesetzt und ins Audit-Log geschrieben.
+4. Admins koennen den Status jederzeit einsehen (`/verifizierung-status [nutzer]`) oder manuell
+   korrigieren (`/mitglied-verifizieren nutzer:<@Mitglied> status:<...>`), z. B. um jemanden
+   abzulehnen oder zurueckzusetzen.
+
+Alle Zustandsaenderungen laufen zentral durch `src/services/verificationService.ts`, das sowohl
+vom Button-Handler als auch von den Slash-Commands verwendet wird - keine doppelte Logik, ein
+einheitliches Audit-Log (`member.verify` / `member.reject` / `member.reset`).
 
 ## Voraussetzungen
 
@@ -65,6 +85,15 @@ npm run db:migrate:deploy    # bestehende Migrationen anwenden (Produktion)
 npm run db:studio             # Prisma Studio (grafischer DB-Browser)
 ```
 
+## Tests
+
+`npm test` fuehrt sowohl reine Unit-Tests (Berechtigungslogik, Fehlerklassen) als auch
+Integrationstests der Repository-/Service-Schicht gegen eine **echte** SQLite-Testdatenbank aus
+(`prisma/test.db`, per `tests/globalSetup.ts` vor dem Testlauf frisch aus den Prisma-Migrationen
+aufgebaut und danach wieder geloescht). Discord.js-Objekte (z. B. `GuildMember`) werden dabei
+gezielt mit einfachen Fake-Objekten simuliert (siehe `tests/verificationService.test.ts`), damit
+Tests ohne echte Discord-Verbindung laufen.
+
 ## Docker
 
 ```bash
@@ -82,19 +111,20 @@ src/
   bot/
     client.ts            Discord-Client-Erstellung & Bootstrap
     commands/             Slash-Commands, nach Kategorie gruppiert
-    events/                Discord-Event-Handler
+    events/                Discord-Event-Handler (inkl. guildMemberAdd, interactionCreate)
     handlers/               Command-/Event-Loader, Command-Deploy-Skript
+    ui/                       Wiederverwendbare Discord-UI-Bausteine (Embeds/Buttons)
   config/                    Umgebungsvariablen-Validierung (Zod)
   db/                          Prisma-Client-Singleton
   permissions/                  Berechtigungsstufen & -pruefung
   repositories/                   Datenzugriffsschicht (kapselt Prisma)
-  services/                         Fachlogik (aktuell leer, fuer kommende Features)
+  services/                         Fachlogik, z. B. verificationService.ts
   types/                              Gemeinsame TypeScript-Typen
   utils/                                Logger, Fehlerklassen
 prisma/
   schema.prisma                         Datenmodell
   migrations/                            Migrationshistorie
-tests/                                     Vitest-Tests
+tests/                                     Vitest-Tests (siehe Abschnitt "Tests")
 ```
 
 ## Sicherheit
@@ -105,3 +135,10 @@ tests/                                     Vitest-Tests
   verstreut, um Inkonsistenzen zu vermeiden.
 - Der Bot benoetigt aktuell nur die Discord-Intents, die fuer die vorhandenen Funktionen
   noetig sind (`src/bot/client.ts`); weitere Intents werden erst bei Bedarf ergaenzt.
+- `GuildMembers` ist ein **privilegierter Intent**: er muss im
+  [Discord Developer Portal](https://discord.com/developers/applications) unter
+  "Bot" > "Privileged Gateway Intents" explizit aktiviert werden, sonst schlaegt der Login fehl.
+  Das ist erst relevant, sobald der Bot tatsaechlich mit einem echten Token verbunden wird.
+- Rollenvergabe/-entzug wird zentral im Verification-Service behandelt: fehlt dem Bot die
+  Berechtigung (z. B. weil seine Rolle in der Hierarchie zu niedrig steht), wird das als
+  verstaendliche Fehlermeldung an den Nutzer zurueckgegeben statt eines stillen Fehlschlags.

@@ -56,22 +56,79 @@
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
 daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt.
 
+## Implementierte Kernfunktionen
+
+### Verifizierung neuer Mitglieder
+
+Beteiligte Bausteine (von unten nach oben):
+
+- `src/repositories/memberRepository.ts` - reine Datenzugriffe auf `Member` (anlegen, lesen,
+  Status setzen). Kennt weder Discord.js noch Geschaeftsregeln.
+- `src/repositories/auditLogRepository.ts` - schreibt/liest `AuditLogEntry`-Eintraege.
+- `src/services/verificationService.ts` - die eigentliche Geschaeftslogik:
+  `ensureMemberTracked()` (Datensatz beim Beitritt anlegen) und `setMemberVerification()`
+  (Statuswechsel inkl. Rollenvergabe/-entzug auf Discord + Audit-Log). Diese eine Funktion wird
+  von **allen** Einstiegspunkten verwendet (Button-Klick, `/verifizieren`,
+  `/mitglied-verifizieren`) - es gibt keine zweite Stelle, an der Rollen vergeben werden, damit
+  Status in der DB und Rolle auf Discord nicht auseinanderlaufen koennen.
+- `src/bot/ui/verificationMessage.ts` - baut das wiederverwendbare Embed+Button-Paar; die
+  Button-`customId` (`verification:self-verify`) ist die einzige Kopplung zwischen UI und
+  Event-Handler.
+- `src/bot/events/guildMemberAdd.ts` - legt beim Beitritt den `Member`-Datensatz an und versucht
+  eine Verifizierungs-DM. Ein DM-Fehlschlag (deaktivierte DMs) ist ein erwarteter Fall und wird
+  nur mit `logger.info` protokolliert, nicht als Fehler behandelt - der Kanal-Button bleibt der
+  garantierte Fallback.
+- `src/bot/events/interactionCreate.ts` - wertet Button-Klicks mit der bekannten `customId` aus
+  und ruft denselben Service wie die Slash-Commands auf. Die Fehlerbehandlung wurde dafuer von
+  `ChatInputCommandInteraction`-spezifisch auf den generischen discord.js-Typ
+  `RepliableInteraction` verallgemeinert, damit Buttons und Commands dieselbe Fehlerausgabe
+  nutzen.
+- Commands: `/setup-verifizierung` (ADMIN, konfiguriert Rolle + Kanal und postet die
+  Verifizierungsnachricht), `/verifizieren` (EVERYONE, Selbst-Verifizierung),
+  `/mitglied-verifizieren` (ADMIN, beliebigen Status fuer ein Mitglied setzen),
+  `/verifizierung-status` (EVERYONE fuer den eigenen Status; fuer fremde Status wird `isServerAdmin()`
+  direkt in der Command-Logik geprueft, da `PermissionLevel` nur eine globale Mindeststufe pro
+  Command kennt, hier aber je nach Parameter unterschiedliche Stufen noetig sind).
+
+Design-Entscheidungen:
+
+- **Kein Schema-Update noetig.** `Member.verificationStatus`/`verifiedAt` waren bereits im
+  Grundgeruest angelegt; die Verifizierung ist der erste Verbraucher dieser Felder.
+- **Idempotenz.** `setMemberVerification()` vergleicht den Zielstatus zuerst mit dem
+  gespeicherten Status; ist er identisch, passiert nichts (kein doppelter Rollen-Aufruf, kein
+  doppelter Audit-Log-Eintrag). Dadurch ist z. B. ein zweiter Klick auf den Verifizierungs-Button
+  gefahrlos.
+- **Fehlerbehandlung an der Quelle uebersetzt.** Schlaegt `roles.add()`/`roles.remove()` mit dem
+  Discord-Fehlercode `50013` (Missing Permissions) fehl - typischerweise weil die Bot-Rolle in der
+  Rollenhierarchie zu niedrig steht -, wird das zentral im Service in eine verstaendliche
+  `ValidationError` uebersetzt, statt als kryptischer `DiscordAPIError` bis zum Nutzer
+  durchzureichen.
+- **DM als Komfort, Kanal-Button als Garantie.** Da nicht jedes Mitglied DMs von Bots erlaubt,
+  ist der persistente Button im konfigurierten Kanal der verlaessliche Weg; die DM ist eine
+  zusaetzliche Erleichterung.
+
 ## Sicherheitsueberlegungen
 
 - Keine Zugangsdaten im Repository (`.env` ignoriert, nur `.env.example` mit Platzhaltern).
 - Minimal noetige Discord-Intents (Principle of Least Privilege), Erweiterung erst bei Bedarf.
+  `GuildMembers` (fuer `guildMemberAdd`) ist ein privilegierter Intent und muss im Discord
+  Developer Portal separat aktiviert werden.
 - Berechtigungsprüfung serverseitig zentral, nicht clientseitig/optimistisch.
 - Docker-Image laeuft als Non-Root-User.
 - Alle Nutzereingaben, die spaeter in Business-Logik einfliessen (Onboarding-Antworten,
   Interessen), werden ueber Zod-Schemas validiert, bevor sie persistiert werden.
+- Rollenvergabe erfolgt ausschliesslich serverseitig ueber den Verification-Service; ein Nutzer
+  kann sich nur die konkret konfigurierte Verifiziert-Rolle selbst zuweisen (Button/`/verifizieren`),
+  nie eine beliebige Rolle.
 
 ## Roadmap der Kernfunktionen
 
 Die folgenden Funktionen sind der naechste Ausbauschritt auf Basis dieses Grundgeruests
 (Reihenfolge orientiert sich an fachlichen Abhaengigkeiten):
 
-1. **Verifizierung neuer Mitglieder** - Grundlage fuer alles Weitere (Rollenvergabe erst nach
-   Verifizierung).
+1. ~~**Verifizierung neuer Mitglieder**~~ - **umgesetzt.** Siehe Abschnitt
+   ["Verifizierung" im README](./README.md#verifizierung) fuer den Ablauf und
+   "Implementierte Kernfunktionen" unten fuer die technischen Details.
 2. **Intelligentes Onboarding mit dynamischen Folgefragen** - nutzt `OnboardingAnswer`.
 3. **Erfassung IT-Erfahrung und Interessen** - Teil des Onboarding-Flows.
 4. **Optionale Interessenrollen** - Rollenvergabe basierend auf erfassten Interessen.

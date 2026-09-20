@@ -11,6 +11,12 @@ export const VERIFICATION_STATUSES = ['PENDING', 'VERIFIED', 'REJECTED'] as cons
 export const verificationStatusSchema = z.enum(VERIFICATION_STATUSES);
 export type VerificationStatus = z.infer<typeof verificationStatusSchema>;
 
+export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
+  PENDING: 'Ausstehend',
+  VERIFIED: 'Verifiziert',
+  REJECTED: 'Abgelehnt',
+};
+
 export const IT_EXPERIENCE_LEVELS = ['KEINE', 'ANFAENGER', 'FORTGESCHRITTEN', 'ERFAHREN'] as const;
 export const itExperienceLevelSchema = z.enum(IT_EXPERIENCE_LEVELS);
 export type ItExperienceLevel = z.infer<typeof itExperienceLevelSchema>;
