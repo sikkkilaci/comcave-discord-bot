@@ -46,6 +46,8 @@ model GuildConfig {
   courseSpecialDays           CourseSpecialDay[]
   courseAcknowledgments       CourseAcknowledgment[]
   courseUpcomingNotifications CourseUpcomingNotification[]
+  studyGroups                 StudyGroup[]
+  studyGroupMembers           StudyGroupMember[]
 }
 
 /// Ein Mitglied der Lerngruppe, verknuepft mit seinem Discord-Account.
@@ -134,6 +136,8 @@ model Class {
   courseSpecialDays           CourseSpecialDay[]
   courseAcknowledgments       CourseAcknowledgment[]
   courseUpcomingNotifications CourseUpcomingNotification[]
+  studyGroups                 StudyGroup[]
+  studyGroupMembers           StudyGroupMember[]
 
   @@unique([guildId, name])
   @@index([guildId, leadDiscordId])
@@ -381,5 +385,63 @@ model CourseUpcomingNotification {
 
   notifiedAt DateTime @default(now())
 
+  @@index([guildId, classId])
+}
+
+/// Temporaere, klassenbezogene Lern-/Arbeitsgruppe (nicht zu verwechseln mit der
+/// "Lerngruppe" im Sinne der gesamten COMCAVE-Kohorte, siehe README/ARCHITECTURE.md
+/// Einleitung) - Mitglieder einer Klasse koennen sich fuer gemeinsames Lernen zu
+/// einer Gruppe zusammenschliessen. Guild-/klassen-gescoped wie jede andere
+/// Fachfunktion; `classId` entscheidet allein ueber die Klassenzugehoerigkeit.
+/// Nutzt bewusst KEINEN eigenen Voice-Kanal (siehe "Lern-/Arbeitsgruppen" in
+/// ARCHITECTURE.md) - der Klassen-Sprachkanal (`Class.voiceChannelId`) steht
+/// bereits allen Klassenmitgliedern offen, ein dynamisch angelegter/geloeschter
+/// Voice-Kanal pro Gruppe waere unnoetige Komplexitaet (Kanal-Lifecycle,
+/// verwaiste Kanaele bei Absturz, Discord-Kanal-Limits) ohne echten Mehrwert.
+model StudyGroup {
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId String
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  name               String
+  createdByDiscordId String
+
+  // Status aktiv/inaktiv statt Loeschen, damit geschlossene Gruppen fuer
+  // Audit/Nachvollziehbarkeit erhalten bleiben (dieselbe Ueberlegung wie bei
+  // Klassenleitungs-Rollen, die beim Entfernen ebenfalls nicht geloescht werden).
+  isActive          Boolean   @default(true)
+  closedAt          DateTime?
+  closedByDiscordId String?
+
+  // Optionale Teilnehmerobergrenze - serverseitig in studyGroupService.ts
+  // durchgesetzt, nicht nur als Anzeige-Information.
+  maxParticipants Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members StudyGroupMember[]
+
+  @@index([guildId, classId, isActive])
+}
+
+/// Mitgliedschaft eines Discord-Nutzers in einer Lerngruppe - eindeutig pro
+/// Gruppe+Mitglied (`@@unique`), ein erneuter Beitritt erzeugt daher nie einen
+/// zweiten Eintrag (siehe joinStudyGroup() in studyGroupService.ts).
+model StudyGroupMember {
+  id           String      @id @default(cuid())
+  guildId      String
+  guild        GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId      String
+  class        Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studyGroupId String
+  studyGroup   StudyGroup  @relation(fields: [studyGroupId], references: [id], onDelete: Cascade)
+
+  memberDiscordId String
+  joinedAt        DateTime @default(now())
+
+  @@unique([studyGroupId, memberDiscordId])
   @@index([guildId, classId])
 }

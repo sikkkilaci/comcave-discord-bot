@@ -103,6 +103,9 @@ Faustregeln:
   `CourseAcknowledgment`: Kenntnisnahme eines Mitglieds fuer einen Kurs-Slot.
   `CourseUpcomingNotification`: Marker fuer bereits gesendete 7-Tage-Hinweise. Siehe "Kursplan"
   unten.
+- `StudyGroup`: temporaere Lerngruppe einer Klasse (Name, Ersteller, aktiv/geschlossen, optionales
+  Teilnehmerlimit). `StudyGroupMember`: Mitgliedschaft eines Discord-Nutzers in einer Gruppe. Siehe
+  "Lerngruppen" unten.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
 daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt.
@@ -170,6 +173,15 @@ daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt
 > `@unique` (nicht nur Teil eines zusammengesetzten Keys), da hier maximal eine Benachrichtigung pro
 > Kurs jemals existieren darf - das Schema selbst verhindert Duplikate, unabhaengig von der
 > Abfragelogik.
+
+> **Migration `add_study_groups`:** Fuegt `StudyGroup` und `StudyGroupMember` hinzu (mit
+> `guildId`/`classId`-Fremdschluesseln, analog zu `add_course_plan`) - rein additiv. `StudyGroup`
+> nutzt `isActive`/`closedAt`/`closedByDiscordId` statt eines `DELETE` beim Schliessen, damit
+> geschlossene Gruppen fuer Audit/Nachvollziehbarkeit erhalten bleiben - dieselbe Ueberlegung wie bei
+> `Class.leadDiscordId`, das beim Entfernen einer Klassenleitung ebenfalls nicht geloescht,
+> sondern auf `null` gesetzt wird. `StudyGroupMember` traegt `@@unique([studyGroupId,
+memberDiscordId])`, damit ein wiederholter Beitrittsversuch nie zu einer doppelten Mitgliedschaft
+> fuehren kann.
 
 ## Implementierte Kernfunktionen
 
@@ -794,6 +806,63 @@ Design-Entscheidungen:
   taeglicher `setInterval()`-Check) waere lokal auf `ready.ts`/`coursePlanNotificationService.ts`
   begrenzt.
 
+### Lerngruppen
+
+Sechste klassenbezogene Fachfunktion: temporaere Lern-/Arbeitsgruppen innerhalb einer Klasse
+(begrifflich nicht zu verwechseln mit der "Lerngruppe" im Sinne der gesamten COMCAVE-Kohorte aus der
+Einleitung von README.md - der Name wurde bewusst so aus der Anforderung uebernommen). Beteiligte
+Bausteine:
+
+- **Datenmodell** (`prisma/schema.prisma`): `StudyGroup` (Name, Ersteller, `isActive`/`closedAt`/
+  `closedByDiscordId` statt Loeschen - geschlossene Gruppen bleiben fuer Audit/Nachvollziehbarkeit
+  erhalten, dieselbe Ueberlegung wie bei entfernten Klassenleitungs-Zuweisungen, die ebenfalls nicht
+  geloescht werden), optionales `maxParticipants`. `StudyGroupMember` (Mitgliedschaft, `@@unique(
+[studyGroupId, memberDiscordId])` - ein erneuter Beitritt kann nie einen zweiten Eintrag anlegen).
+  Beide Modelle wie jedes andere Fachmodell immer nach `guildId` UND `classId` gescoped.
+- **Repository/Service** (`studyGroupRepository.ts`/`studyGroupService.ts`), 1:1 nach dem
+  etablierten Muster: jede Funktion loest die Gruppe zuerst per `guildConfig.id` auf
+  (`getStudyGroupById()`), dann die Klasse aus dem gespeicherten `group.classId`
+  (`getClassById()`) - niemals aus einem Aufrufer-Parameter. `assertClassReadAccess()` fuer
+  Erstellen/Anzeigen/Beitreten/Kenntnisnahme-aehnliche Lesevorgaenge (jedes verifizierte Mitglied der
+  eigenen Klasse), `assertClassManagementAccess()` fuer Verwaltungssicht und Mitgliederverwaltung
+  (nur Admin/Klassenleitung der betroffenen Klasse). Verlassen einer Gruppe braucht keine eigene
+  Berechtigungspruefung - man kann ausschliesslich die eigene Mitgliedschaft loeschen.
+- **Schliessen als kontrollierte Ausnahme:** `closeStudyGroup()` erlaubt zusaetzlich zu Admin/
+  Klassenleitung auch die urspruengliche Ersteller:in der Gruppe (`isServerAdmin() ||
+isClassLeadOf() || group.createdByDiscordId === member.id`) - dieselbe Technik wie bei
+  `assertClassReadAccess()` selbst (dieselben Grund-Bedingungen, um GENAU eine zusaetzliche erlaubte
+  Bedingung ergaenzt, keine zweite parallele Pruefung). Jede mutierende Funktion prueft zuerst
+  `group.isActive` und lehnt mit `ValidationError` ab, wenn die Gruppe bereits geschlossen ist -
+  Beitreten, Verlassen, Mitgliederverwaltung und ein erneutes Schliessen sind auf einer geschlossenen
+  Gruppe damit einheitlich blockiert.
+- Commands (`src/bot/commands/klasse/`): `/lerngruppe-erstellen`, `/lerngruppen-anzeigen`,
+  `/lerngruppe-beitreten`, `/lerngruppe-verlassen`, `/lerngruppe-schliessen` (alle VERIFIED - die
+  tatsaechliche Einschraenkung bei `/lerngruppe-schliessen` liegt im Service, nicht im
+  Command-Gate, da auch eine normale Ersteller:in schliessen darf), `/lerngruppe-status` und
+  `/lerngruppe-mitglied-entfernen` (beide KLASSENLEITUNG). Kein interaktives Auswahl-Menu (ID-basiert
+  wie bei Pruefungen/Terminen), keine dynamischen Buttons pro Gruppe.
+
+Design-Entscheidungen:
+
+- **Kein dynamisch angelegter/geloeschter Voice-Kanal pro Gruppe.** Der Klassen-Sprachkanal
+  (`Class.voiceChannelId`, siehe "Private Klassenbereiche" oben) steht bereits allen Mitgliedern der
+  Klasse offen - fuer eine Lerngruppe gibt es dort nichts zusaetzlich zu gewaehren, das nicht schon
+  laenger existiert. Ein Kanal pro Gruppe haette Kanal-Lifecycle-Management (Erstellung beim
+  Gruenden, Loeschung beim Schliessen, verwaiste Kanaele bei einem Bot-Absturz zwischen beiden
+  Schritten, Discord-Kanal-Limits) erfordert, ohne dass die Anforderung selbst einen Vorteil
+  gegenueber dem gemeinsamen Kanal benennt - genau der Fall, den die Anforderung selbst als "wenn
+  temporaere Voice-Raeume architektonisch unnoetig komplex waeren" vorgesehen hat. `/lerngruppen-
+anzeigen` verweist stattdessen lediglich auf den vorhandenen Kanal.
+  Moderationsseitig bedeutet das: "Voice-/Gruppenrechte zurücksetzen" hat hier keine eigene
+  Discord-Berechtigung zum Widerrufen (da nie eine gruppenspezifische vergeben wurde) - Schliessen
+  der Gruppe bzw. Entfernen eines Mitglieds IST die vollstaendige Rueckstellung.
+- **Status aktiv/inaktiv statt Loeschen.** Ermoeglicht `/lerngruppe-status` weiterhin geschlossene
+  Gruppen samt Verlauf anzuzeigen und haelt den Audit-Trail (`studyGroup.close` mit `closedAt`/
+  `closedByDiscordId`) nachvollziehbar, statt Historie durch ein `DELETE` zu verlieren.
+- **Teilnehmerlimit als einfaches optionales Integer-Feld statt Warteliste.** Die Anforderung nennt
+  nur eine "optional begrenzte Teilnehmerzahl", keine Warteschlangen-Logik - ein zusaetzliches
+  Warteliste-Modell waere Funktionsumfang ohne Anforderungsdeckung.
+
 ### Admin-/Moderator-Rollen
 
 `GuildConfig.adminRoleId`/`moderatorRoleId` waren von Anfang an Teil des Schemas ("Rollen-IDs fuer
@@ -939,13 +1008,19 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
     ["Lernmaterial" im README](./README.md#lernmaterial) sowie "Lernmaterial" oben. Kanal existiert
     bereits (`materialChannelId`); die optionale Verknuepfung mit Pruefungen/Berichten nutzt
     dasselbe Fail-closed-Prinzip wie alle anderen klassenbezogenen Funktionen.
-13. **Voice-Lerngruppen** - benoetigt zusaetzlichen Intent (`GuildVoiceStates` ist bereits aktiviert).
-14. **Moderation** - kann die bereits vergebenen Klassenleitungs-Overwrites (`ModerateMembers`,
-    `MuteMembers`/`DeafenMembers`/`MoveMembers`) direkt nutzen. `GuildConfig.moderatorRoleId` ist
-    seit dem Sicherheits-Review ueber `/setup-admin-rollen` konfigurierbar (siehe
-    "Admin-/Moderator-Rollen" oben), aber bewusst noch ohne Wirkung - eine kuenftige
-    Moderationsfunktion braucht dafuer noch eine eigene `PermissionLevel.MODERATOR`-Stufe in
-    `src/permissions/`.
+13. ~~**Lerngruppen (Voice-Konzept)**~~ - **umgesetzt**, mit der robusteren Variante ohne dynamische
+    Voice-Kanaele. Siehe Abschnitt ["Lerngruppen" im README](./README.md#lerngruppen) sowie
+    "Lerngruppen" oben: Gruppen nutzen den bereits vorhandenen Klassen-Sprachkanal
+    (`Class.voiceChannelId`) statt eigener, dynamisch verwalteter Kanaele.
+14. ~~**Klassenbezogene Moderation (Lerngruppen)**~~ - **teilweise umgesetzt**: Klassenleitung/Admin
+    koennen Lerngruppen-Mitglieder entfernen und Gruppen schliessen (`/lerngruppe-mitglied-entfernen`,
+    `/lerngruppe-status`), siehe "Lerngruppen" oben. Server-/kanalweite Moderation (Mute/Kick auf
+    Discord-Ebene, `MuteMembers`/`DeafenMembers`/`MoveMembers`-Overwrites) ist weiterhin offen - kann
+    die bereits vergebenen Klassenleitungs-Overwrites direkt nutzen, sobald benoetigt.
+    `GuildConfig.moderatorRoleId` ist seit dem Sicherheits-Review ueber `/setup-admin-rollen`
+    konfigurierbar (siehe "Admin-/Moderator-Rollen" oben), aber weiterhin ohne Wirkung - eine
+    kuenftige serverweite Moderationsfunktion braucht dafuer noch eine eigene
+    `PermissionLevel.MODERATOR`-Stufe in `src/permissions/`.
 15. ~~**Logging/Audit-Log-Anzeige**~~ - **umgesetzt** fuer den Lesezugriff. `AuditLogEntry` wurde
     von Anfang an bei jeder relevanten Aktion geschrieben; `/audit-log` (siehe
     "Audit-Log-Anzeige" oben) macht die gesammelten Eintraege jetzt fuer globale Admins einsehbar.

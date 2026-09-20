@@ -46,6 +46,13 @@ describe('commandLoader', () => {
       kursplan: PermissionLevel.VERIFIED,
       'kursplan-status': PermissionLevel.KLASSENLEITUNG,
       'kursplan-importieren': PermissionLevel.ADMIN,
+      'lerngruppe-erstellen': PermissionLevel.VERIFIED,
+      'lerngruppen-anzeigen': PermissionLevel.VERIFIED,
+      'lerngruppe-beitreten': PermissionLevel.VERIFIED,
+      'lerngruppe-verlassen': PermissionLevel.VERIFIED,
+      'lerngruppe-schliessen': PermissionLevel.VERIFIED,
+      'lerngruppe-status': PermissionLevel.KLASSENLEITUNG,
+      'lerngruppe-mitglied-entfernen': PermissionLevel.KLASSENLEITUNG,
     };
 
     for (const [name, level] of Object.entries(expected)) {

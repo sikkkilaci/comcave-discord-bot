@@ -3,13 +3,14 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind neun Kernfunktionen umgesetzt:
+Berechtigungssystem, Command-/Event-Infrastruktur) sind zehn Kernfunktionen umgesetzt:
 **Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**,
 **private Klassenbereiche**, **klassenbezogene Klassenleitung**, **Pruefungen und Termine**,
-**Tages-/Wochenberichte als Berichtsheft-Grundlage**, **strukturiertes Lernmaterial** sowie ein
-**Kursplan mit Kenntnisnahme und 7-Tage-Hinweis** (aktuell fuer Klasse A) - die klassenbezogenen
-Fachfunktionen auf Basis der Klassenleitung. Weitere Fachfunktionen (eigene Kursplaene fuer B/C,
-weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
+**Tages-/Wochenberichte als Berichtsheft-Grundlage**, **strukturiertes Lernmaterial**, ein
+**Kursplan mit Kenntnisnahme und 7-Tage-Hinweis** (aktuell fuer Klasse A) sowie **klassenbezogene
+Lerngruppen** (Beitreten/Verwalten/Moderation ueber den gemeinsamen Klassen-Sprachkanal) - die
+klassenbezogenen Fachfunktionen auf Basis der Klassenleitung. Weitere Fachfunktionen (eigene
+Kursplaene fuer B/C, weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Verifizierung
@@ -265,6 +266,36 @@ Kurs innerhalb der naechsten 7 Tage beginnt, und postet in dem Fall einen Hinwei
 Klassen-Ankuendigungen (`Class.announcementChannelId`, falls konfiguriert). Pro Kurs+Klasse wird das
 nur einmal ausgeloest (per DB-Constraint) - wiederholte Bot-Starts erzeugen keine doppelten Hinweise.
 
+## Lerngruppen
+
+Temporaere, klassenbezogene Lern-/Arbeitsgruppen (nicht zu verwechseln mit der "Lerngruppe" im Sinne
+der gesamten COMCAVE-Kohorte aus der Einleitung oben) - Mitglieder einer Klasse koennen sich fuer
+gemeinsames Lernen zu einer Gruppe zusammenschliessen.
+
+- `/lerngruppe-erstellen name:<...> [teilnehmerlimit:<Zahl>] [klasse:<A|B|C>]` (VERIFIED) - gruendet
+  eine Gruppe fuer die eigene (oder eine andere, sofern berechtigte) Klasse; die Ersteller:in wird
+  automatisch erstes Mitglied. Optionales Teilnehmerlimit (1-100) wird serverseitig durchgesetzt.
+- `/lerngruppen-anzeigen [klasse:<A|B|C>]` (VERIFIED) - listet die aktiven Gruppen der eigenen Klasse
+  inkl. Teilnehmerzahl und ID (fuer Beitreten/Verlassen/Schliessen) sowie einen Hinweis auf den
+  gemeinsamen Klassen-Sprachkanal.
+- `/lerngruppe-beitreten gruppe-id:<...>` / `/lerngruppe-verlassen gruppe-id:<...>` (VERIFIED) -
+  Selbstbedienung; ein erneuter Beitritt erzeugt keine doppelte Mitgliedschaft.
+- `/lerngruppe-schliessen gruppe-id:<...>` (VERIFIED, tatsaechliche Berechtigung serverseitig
+  geprueft) - erlaubt fuer die Ersteller:in der Gruppe, die Klassenleitung der betroffenen Klasse
+  oder Admin. Eine bereits geschlossene Gruppe kann nicht erneut geschlossen oder sonst veraendert
+  werden (Beitreten/Verlassen/Mitgliederverwaltung schlagen danach kontrolliert fehl).
+- `/lerngruppe-status klasse:<A|B|C>` (KLASSENLEITUNG/Admin) - Verwaltungssicht: alle Gruppen (aktiv
+  und geschlossen) der Klasse inkl. vollstaendiger Mitgliederliste.
+- `/lerngruppe-mitglied-entfernen gruppe-id:<...> mitglied:<@Person>` (KLASSENLEITUNG/Admin) -
+  Moderationsaktion: entfernt ein Mitglied aus einer Gruppe der eigenen Klasse.
+
+**Voice-Konzept:** Lerngruppen bekommen bewusst **keinen eigenen, dynamisch angelegten Voice-Kanal**.
+Der bereits vorhandene Klassen-Sprachkanal (`Class.voiceChannelId`, eingerichtet per
+`/setup-klassenbereiche`) steht ohnehin allen Mitgliedern der Klasse offen - ein zusaetzlicher
+Kanal pro Gruppe waere unnoetige Komplexitaet (Kanal-Lifecycle, verwaiste Kanaele bei einem
+Bot-Absturz, Discord-Kanal-Limits) ohne echten Mehrwert. `/lerngruppen-anzeigen` verweist lediglich
+auf diesen gemeinsamen Kanal.
+
 ## Admin-/Moderator-Rollen
 
 `adminRoleId`/`moderatorRoleId` (siehe `GuildConfig` in `prisma/schema.prisma`) waren bereits Teil
@@ -495,3 +526,12 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   handelt. Ein Mitglied ohne Klassenzuordnung (unverifiziert oder noch keine Klasse gewaehlt) erhaelt
   fail-closed eine `PermissionError`/`ValidationError` statt Kursplan-Inhalten - dieselbe Ableitung
   wie bei Pruefungen/Terminen/Lernmaterial, keine zusaetzliche Sonderpruefung.
+- Lerngruppen loesen Klasse/Guild immer aus dem gespeicherten `group.classId` auf (nie aus einem
+  Aufrufer-Parameter): Beitreten/Verlassen/Erstellen pruefen `assertClassReadAccess()`, Schliessen/
+  Mitgliederverwaltung pruefen `assertClassManagementAccess()` - eine manipulierte oder aus einer
+  fremden Guild stammende Gruppen-ID liefert nie Zugriff auf eine andere Klasse. Einzige Erweiterung
+  gegenueber dem Standard-Muster: die Ersteller:in einer Gruppe darf sie zusaetzlich selbst
+  schliessen (`isServerAdmin() || isClassLeadOf() || istErstellerin`) - Klassenleitung B bleibt davon
+  unberuehrt und kann weiterhin niemals eine Gruppe der Klasse A schliessen oder deren Mitglieder
+  verwalten. Ein Teilnehmerlimit wird serverseitig durchgesetzt (nicht nur als Anzeige), und jede
+  mutierende Aktion auf einer bereits geschlossenen Gruppe wird kontrolliert abgelehnt.
