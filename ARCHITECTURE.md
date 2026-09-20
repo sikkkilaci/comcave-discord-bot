@@ -59,11 +59,13 @@ Faustregeln:
   direkt im Anzeigetext, wodurch Buttons, #wo-bin-ich-Footer und Bestaetigungstexte
   (`interactionCreate.ts`, `/setup-klassen`) es automatisch mitbekommen - keine zweite Emoji-Zuordnung
   parallel pflegen.
-- **Neue Fachbereiche** (Lernmaterial 📚, Berichtsheft 📝, Hilfe 🆘, Sprachkanal 🔊 - siehe
-  Roadmap) erhalten ihr Emoji, sobald die zugehoerige UI tatsaechlich existiert; es wird nichts
-  vorab in Commands/Embeds eingebaut, die es noch nicht gibt. Klassenleitung 👑 (`/setup-
-klassenleitung`, `/entferne-klassenleitung`) sowie Pruefungen 🎓 und Termine 📅 (alle
-  `/pruefung-*`/`/termin-*`-Befehle und ihre Embeds) sind bereits umgesetzt.
+- **Neue Fachbereiche** (Lernmaterial 📚, Hilfe 🆘, Sprachkanal 🔊 - siehe Roadmap) erhalten ihr
+  Emoji, sobald die zugehoerige UI tatsaechlich existiert; es wird nichts vorab in Commands/Embeds
+  eingebaut, die es noch nicht gibt. Bereits umgesetzt: Klassenleitung 👑
+  (`/setup-klassenleitung`, `/entferne-klassenleitung`), Pruefungen 🎓 und Termine 📅 (alle
+  `/pruefung-*`/`/termin-*`-Befehle und ihre Embeds), sowie Berichtsheft 📝, Tagesbericht 📋 und
+  Kalenderwoche/Zeitraum 📅 (alle `/tagesbericht-*`/`/wochenbericht-*`/`/berichtsheft-*`-Befehle;
+  Lerninhalte werden innerhalb der Embeds zusaetzlich mit 📚 markiert).
 
 ## Datenmodell (aktueller Stand)
 
@@ -85,6 +87,11 @@ klassenleitung`, `/entferne-klassenleitung`) sowie Pruefungen 🎓 und Termine �
 - `Appointment`: Termin einer Klasse (Titel, Beschreibung, Zeitpunkt) - strukturell wie `Exam`,
   aber ein eigenes Modell statt eines gemeinsamen mit Nullable-Feldern, da sich die Pflichtfelder
   unterscheiden (Fach/Lernhinweise vs. reiner Titel).
+- `DailyReport`: Tagesbericht einer Klasse (Datum, Themen, Lerninhalte, Hinweise, optionale
+  Lernmaterialien) - Berichtsheft-Grundlage, siehe "Pruefungen und Termine" analoger Abschnitt
+  "Berichtsheft, Tages- und Wochenberichte" unten.
+- `WeeklyReport`: Wochenbericht einer Klasse (Jahr, Kalenderwoche, Zeitraum, Themen,
+  Lernfortschritt, Hinweise) - ebenfalls Berichtsheft-Grundlage.
 - `AuditLogEntry`: Generisches Audit-Log fuer administrative Aktionen/Moderation.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
@@ -118,6 +125,17 @@ daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt
 > Lernhinweise; Termin: nur Titel) und ein gemeinsames Modell entweder Nullable-Felder fuer die
 > jeweils nicht zutreffende Variante gebraucht haette oder eine JSON-Spalte - beides unnoetig
 > komplex fuer zwei feste, einfache Formen.
+
+> **Migration `add_daily_and_weekly_reports`:** Fuegt die neuen Modelle `DailyReport` und
+> `WeeklyReport` hinzu (je mit `guildId`/`classId`-Fremdschluesseln), analog zu
+> `add_exams_and_appointments` rein additiv. Kein drittes "Berichtsheft"-Modell: Ein Berichtsheft
+> ist begrifflich die Sammlung aller Tages- und Wochenberichte einer Klasse, keine eigene
+> Datenkategorie - eine zusaetzliche Tabelle wuerde entweder die Daten duplizieren oder nur als
+> Fremdschluessel-Sammlung auf die beiden anderen Tabellen verweisen, ohne eigenen Wert zu
+> schaffen (siehe `berichtsheftService.ts` im Abschnitt "Berichtsheft, Tages- und Wochenberichte"
+> unten, der genau diese kombinierte Sicht stattdessen zur Laufzeit erzeugt). `WeeklyReport.year`
+> wird serverseitig aus `periodStart` abgeleitet (kein eigenes Eingabefeld), damit Jahr und
+> Zeitraum nie widerspruechlich gespeichert werden koennen.
 
 ## Implementierte Kernfunktionen
 
@@ -512,6 +530,75 @@ Design-Entscheidungen:
   (Kanal-Overwrites sichern zusaetzlich auf Discord-Ebene ab, sind aber nicht die Quelle der
   Wahrheit fuer die Bot-Logik).
 
+### Berichtsheft, Tages- und Wochenberichte
+
+Zweite klassenbezogene Fachfunktion, strukturell identisch zu "Pruefungen und Termine" aufgebaut -
+derselbe Architektur-Baustein wird hier nur ein weiteres Mal angewendet. Beteiligte Bausteine:
+
+- `src/utils/dateTime.ts::parseGermanDate()`/`formatGermanDate()` (neu) - Datum ohne Uhrzeit
+  (`TT.MM.JJJJ`), fuer Tagesbericht-Datum und Wochenbericht-Zeitraum. Intern refaktoriert:
+  `parseGermanDateTime()` und `parseGermanDate()` teilen sich jetzt dieselbe
+  Komponenten-Parsing-/Existenzpruefung (`parseDateComponents()`/`assertRealDate()`), damit die
+  "existiert dieses Datum wirklich"-Logik nicht zweimal unterschiedlich implementiert ist.
+- `src/repositories/dailyReportRepository.ts`/`weeklyReportRepository.ts` - reiner Datenzugriff,
+  nach demselben Muster wie `examRepository.ts`/`appointmentRepository.ts`: jede Einzelabfrage
+  nach ID ist immer zusaetzlich nach `guildId` gescoped.
+- `src/services/dailyReportService.ts`/`weeklyReportService.ts` - je vier Funktionen
+  (`create*ForClass()`, `update*ForClass()`, `delete*ForClass()`, `list*ForClass()`), 1:1 nach dem
+  bei Pruefungen/Terminen etablierten Muster: `assertClassManagementAccess()` fuer
+  Verwaltungsaktionen (Klasse beim Bearbeiten/Loeschen immer aus dem gespeicherten Datensatz
+  aufgeloest, nie aus einem Aufrufer-Parameter), `assertClassReadAccess()` fuer die
+  `list*ForClass()`-Funktionen. `weeklyReportService.ts` validiert zusaetzlich die Kalenderwoche
+  (ganzzahlig, 1-53) und den Zeitraum (Ende darf nicht vor dem Beginn liegen), bevor gespeichert
+  wird.
+- `src/services/berichtsheftService.ts::getBerichtsheftForClass()` (neu) - kombiniert Tages- und
+  Wochenberichte einer Klasse zu einer einzigen, chronologisch sortierten `BerichtsheftEntry[]`-
+  Liste. Ruft dafuer ausschliesslich `listDailyReportsForClass()`/`listWeeklyReportsForClass()`
+  auf (die bereits eigenstaendig `assertClassReadAccess()` durchsetzen) und fuegt **keine**
+  zusaetzliche Berechtigungslogik hinzu - die Kombination ist rein praesentational. Das ist
+  bewusst die "Grundlage fuer einen spaeteren Export" aus der Anforderung: ein spaeteres
+  `/berichtsheft-export`-Command muesste nur `BerichtsheftEntry[]` in ein Zielformat (CSV, PDF, ...)
+  serialisieren, ohne die bestehende Service-Schicht anzufassen.
+- `src/bot/ui/reportMessage.ts` - Embed-Builder fuer alle drei Anzeige-Befehle
+  (`buildDailyReportListEmbed()`/`buildWeeklyReportListEmbed()`/`buildBerichtsheftEmbed()`),
+  strukturell wie `classEventMessage.ts` bei Pruefungen/Terminen.
+- Commands (`src/bot/commands/klasse/`): `/tagesbericht-erstellen`, `/tagesbericht-bearbeiten`,
+  `/tagesbericht-loeschen` (alle KLASSENLEITUNG), `/tagesberichte-anzeigen` (VERIFIED), die
+  analogen vier `/wochenbericht-*`-Befehle sowie `/berichtsheft-anzeigen` (VERIFIED, kombinierte
+  Ansicht).
+
+Design-Entscheidungen:
+
+- **Kein drittes "Berichtsheft"-Modell.** Siehe Migrations-Hinweis im Datenmodell-Abschnitt oben -
+  `DailyReport` und `WeeklyReport` SIND bereits die Berichtsheft-Eintraege, `berichtsheftService.ts`
+  fasst sie nur zusammen.
+- **"Besondere Hinweise" ist ein Pflichtfeld, "Lernmaterialien" optional.** Entspricht der
+  Anforderungsformulierung woertlich: Nur bei Tagesberichten war "optional verknuepfte
+  Lernmaterialien" explizit als optional markiert, alle anderen Felder (inkl. "besondere
+  Hinweise") nicht - konsistent mit dem bereits etablierten Muster bei Pruefungen
+  (Beschreibung Pflicht, Lernhinweise optional).
+- **Lernmaterialien als Freitext-Referenz statt Fremdschluessel.** Es existiert noch kein eigenes
+  Lernmaterial-Modell (siehe Roadmap) - eine Relation dorthin waere verfrueht. Ein Freitextfeld
+  (z. B. "Kapitel 4 PDF, Video XY") deckt die Anforderung "optional verknuepfte Lernmaterialien"
+  ab, ohne ein Feature vorwegzunehmen, das noch nicht existiert.
+- **Jahr wird serverseitig aus dem Zeitraum-Beginn abgeleitet, nicht separat abgefragt.** Vermeidet
+  ein fuenftes Eingabefeld und die Moeglichkeit, dass Jahr und Zeitraum widerspruechlich
+  eingegeben werden (siehe Migrations-Hinweis oben).
+- **Kalenderwoche und Zeitraum werden beide gespeichert, ohne sie gegeneinander zu validieren.**
+  Die Anforderung nennt beide Felder separat; ob eine angegebene Kalenderwoche exakt zum
+  angegebenen Zeitraum passt (ISO-8601-Wochenberechnung), wird nicht geprueft - das waere eine
+  zusaetzliche, nicht angeforderte Validierungsebene und in der Praxis Sache der eintragenden
+  Klassenleitung. Was geprueft wird: Ganzzahligkeit/Bereich (1-53) der Kalenderwoche und dass das
+  Zeitraum-Ende nicht vor dem Beginn liegt.
+- **Lesezugriff wie bei Pruefungen/Terminen ueber `Member.classId`, nicht ueber Kanal-Overwrites.**
+  Die Anforderung nennt zusaetzlich "sofern der jeweilige Klassenkanal dies erlaubt" - das ist
+  bereits durch die echten Discord-Permission-Overwrites auf `reportChannelId` abgedeckt (siehe
+  "Private Klassenbereiche" oben) und eine separate, davon unabhaengige Schicht: Discord verhindert
+  ohnehin, dass ein Mitglied den Kanal einer fremden Klasse ueberhaupt sieht. Die Bot-interne
+  Pruefung dupliziert das nicht ueber eine Live-Kanalabfrage (die einen echten Server/Token
+  braeuchte, siehe Punkt 14 der Anforderung), sondern bleibt bei derselben DB-basierten Pruefung
+  wie alle anderen klassenbezogenen Funktionen.
+
 ## Sicherheitsueberlegungen
 
 - Keine Zugangsdaten im Repository (`.env` ignoriert, nur `.env.example` mit Platzhaltern).
@@ -558,10 +645,15 @@ Design-Entscheidungen:
   gespeicherten Datensatz auf (`exam.classId`/`appointment.classId` -> `getClassById()`), niemals
   aus einem vom Aufrufer angegebenen Klassennamen - eine manipulierte Pruefungs-/Termin-ID kann
   dadurch nie auf eine fremde Klasse zugreifen, selbst wenn der Aufrufer die ID einer fremden
-  Klasse errät oder kopiert. `getClassById()`/`getExamById()`/`getAppointmentById()` sind
+  Klasse erraet oder kopiert. `getClassById()`/`getExamById()`/`getAppointmentById()` sind
   zusaetzlich immer nach `guildId` gescoped, damit keine ID serveruebergreifend Daten preisgibt.
   Lesezugriff (`assertClassReadAccess()`) ist ebenso fail-closed: ohne eine der drei erlaubten
   Bedingungen (Admin, Klassenleitung dieser Klasse, eigene Klassenzugehoerigkeit) wird verweigert.
+- Tages-/Wochenberichte (Berichtsheft) wenden exakt dasselbe Fail-closed-Muster an wie
+  Pruefungen/Termine: `dailyReportService.ts`/`weeklyReportService.ts` loesen die Klasse beim
+  Bearbeiten/Loeschen immer aus `report.classId` -> `getClassById()` auf, nie aus einem
+  Aufrufer-Parameter. `berichtsheftService.ts` fuegt keine eigene Pruefung hinzu, sondern
+  delegiert vollstaendig an die bereits authentifizierten Listenfunktionen der beiden Services.
 
 ## Roadmap der Kernfunktionen
 
@@ -593,9 +685,15 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
    Termine" oben. Erste klassenbezogene Fachfunktion, die `assertClassManagementAccess()`/
    `assertClassReadAccess()` fuer Verwaltung bzw. Lesezugriff verwendet - das Muster fuer die
    folgenden Punkte 10-12.
-10. **Tages-/Wochenberichte**
-11. **Berichtsheft** - Kanal existiert bereits (`reportChannelId`).
-12. **Lernmaterial** - Kanal existiert bereits (`materialChannelId`).
+10. ~~**Tages-/Wochenberichte**~~ - **umgesetzt.**
+11. ~~**Berichtsheft**~~ - **umgesetzt** als kombinierte Sicht auf Tages-/Wochenberichte. Siehe
+    Abschnitt ["Berichtsheft, Tages- und Wochenberichte" im
+    README](./README.md#berichtsheft-tages--und-wochenberichte) sowie "Berichtsheft, Tages- und
+    Wochenberichte" oben. Kanal existiert bereits (`reportChannelId`).
+12. **Lernmaterial** - Kanal existiert bereits (`materialChannelId`). Naechster logischer Schritt:
+    kann `assertClassManagementAccess()`/`assertClassReadAccess()` sowie das Freitext-Referenz-
+    Muster aus `DailyReport.relatedMaterials` direkt wiederverwenden, sobald ein eigenes
+    Lernmaterial-Modell benoetigt wird.
 13. **Voice-Lerngruppen** - benoetigt zusaetzlichen Intent (`GuildVoiceStates` ist bereits aktiviert).
 14. **Moderation** - kann die bereits vergebenen Klassenleitungs-Overwrites (`ModerateMembers`,
     `MuteMembers`/`DeafenMembers`/`MoveMembers`) direkt nutzen.

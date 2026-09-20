@@ -27,6 +27,15 @@ describe('commandLoader', () => {
       'termin-bearbeiten': PermissionLevel.KLASSENLEITUNG,
       'termin-loeschen': PermissionLevel.KLASSENLEITUNG,
       'termine-anzeigen': PermissionLevel.VERIFIED,
+      'tagesbericht-erstellen': PermissionLevel.KLASSENLEITUNG,
+      'tagesbericht-bearbeiten': PermissionLevel.KLASSENLEITUNG,
+      'tagesbericht-loeschen': PermissionLevel.KLASSENLEITUNG,
+      'tagesberichte-anzeigen': PermissionLevel.VERIFIED,
+      'wochenbericht-erstellen': PermissionLevel.KLASSENLEITUNG,
+      'wochenbericht-bearbeiten': PermissionLevel.KLASSENLEITUNG,
+      'wochenbericht-loeschen': PermissionLevel.KLASSENLEITUNG,
+      'wochenberichte-anzeigen': PermissionLevel.VERIFIED,
+      'berichtsheft-anzeigen': PermissionLevel.VERIFIED,
     };
 
     for (const [name, level] of Object.entries(expected)) {

@@ -34,11 +34,13 @@ model GuildConfig {
   welcomeChannelId   String?
   whereAmIChannelId  String? // #wo-bin-ich
 
-  classes      Class[]
-  members      Member[]
-  auditLogs    AuditLogEntry[]
-  exams        Exam[]
-  appointments Appointment[]
+  classes       Class[]
+  members       Member[]
+  auditLogs     AuditLogEntry[]
+  exams         Exam[]
+  appointments  Appointment[]
+  dailyReports  DailyReport[]
+  weeklyReports WeeklyReport[]
 }
 
 /// Ein Mitglied der Lerngruppe, verknuepft mit seinem Discord-Account.
@@ -117,9 +119,11 @@ model Class {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members      Member[]
-  exams        Exam[]
-  appointments Appointment[]
+  members       Member[]
+  exams         Exam[]
+  appointments  Appointment[]
+  dailyReports  DailyReport[]
+  weeklyReports WeeklyReport[]
 
   @@unique([guildId, name])
   @@index([guildId, leadDiscordId])
@@ -168,6 +172,54 @@ model Appointment {
   updatedAt DateTime @updatedAt
 
   @@index([guildId, classId, scheduledAt])
+}
+
+/// Tagesbericht einer Klasse (Berichtsheft-Grundlage). Verwaltet ausschliesslich
+/// von Admin oder der Klassenleitung genau dieser Klasse (siehe dailyReportService.ts).
+model DailyReport {
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId String
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  date             DateTime // Datum des Tagesberichts
+  topics           String // behandelte Themen
+  content          String // Lerninhalte
+  notes            String // besondere Hinweise
+  relatedMaterials String? // optional verknuepfte Lernmaterialien (Freitext-Referenz)
+
+  createdByDiscordId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, classId, date])
+}
+
+/// Wochenbericht einer Klasse (Berichtsheft-Grundlage). Verwaltet ausschliesslich
+/// von Admin oder der Klassenleitung genau dieser Klasse (siehe weeklyReportService.ts).
+model WeeklyReport {
+  id      String      @id @default(cuid())
+  guildId String
+  guild   GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  classId String
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  year         Int // Jahr der Kalenderwoche (aus periodStart abgeleitet, fuer eindeutige Sortierung/Abfrage)
+  calendarWeek Int // Kalenderwoche (1-53)
+  periodStart  DateTime // Zeitraum: Beginn
+  periodEnd    DateTime // Zeitraum: Ende
+  topics       String // behandelte Themen
+  progress     String // Lernfortschritt / Inhalte
+  notes        String // besondere Hinweise
+
+  createdByDiscordId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId, classId, year, calendarWeek])
 }
 
 /// Zentrales Audit-Log fuer administrative Aktionen und Moderation.

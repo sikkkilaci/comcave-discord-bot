@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { formatGermanDateTime, parseGermanDateTime } from '../src/utils/dateTime.js';
+import {
+  formatGermanDate,
+  formatGermanDateTime,
+  parseGermanDate,
+  parseGermanDateTime,
+} from '../src/utils/dateTime.js';
 import { ValidationError } from '../src/utils/errors.js';
 
 describe('parseGermanDateTime', () => {
@@ -43,5 +48,31 @@ describe('formatGermanDateTime', () => {
   it('formatiert ein Datum lesbar mit fuehrenden Nullen', () => {
     const formatted = formatGermanDateTime(new Date(2026, 0, 5, 9, 5));
     expect(formatted).toBe('05.01.2026 09:05 Uhr');
+  });
+});
+
+describe('parseGermanDate', () => {
+  it('parst ein gueltiges Datum ohne Uhrzeit (Zeit auf 00:00)', () => {
+    const date = parseGermanDate('15.09.2026');
+    expect(date.getFullYear()).toBe(2026);
+    expect(date.getMonth()).toBe(8);
+    expect(date.getDate()).toBe(15);
+    expect(date.getHours()).toBe(0);
+    expect(date.getMinutes()).toBe(0);
+  });
+
+  it('lehnt ein falsch formatiertes Datum ab', () => {
+    expect(() => parseGermanDate('2026-09-15')).toThrow(ValidationError);
+  });
+
+  it('lehnt ein nicht existierendes Datum ab (z. B. 31. April)', () => {
+    expect(() => parseGermanDate('31.04.2026')).toThrow(ValidationError);
+  });
+});
+
+describe('formatGermanDate', () => {
+  it('formatiert ein Datum lesbar mit fuehrenden Nullen, ohne Uhrzeit', () => {
+    const formatted = formatGermanDate(new Date(2026, 0, 5));
+    expect(formatted).toBe('05.01.2026');
   });
 });

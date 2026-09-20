@@ -3,11 +3,12 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind sechs Kernfunktionen umgesetzt:
+Berechtigungssystem, Command-/Event-Infrastruktur) sind sieben Kernfunktionen umgesetzt:
 **Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**,
-**private Klassenbereiche**, **klassenbezogene Klassenleitung** sowie **Pruefungen und Termine**
-als erste klassenbezogene Fachfunktionen. Weitere Fachfunktionen (Berichte, Lernmaterial,
-weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
+**private Klassenbereiche**, **klassenbezogene Klassenleitung**, **Pruefungen und Termine** sowie
+**Tages-/Wochenberichte als Berichtsheft-Grundlage** - die klassenbezogenen Fachfunktionen auf
+Basis der Klassenleitung. Weitere Fachfunktionen (Lernmaterial, weitergehende Moderation, ...)
+werden darauf aufbauend schrittweise ergaenzt.
 Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Verifizierung
@@ -167,6 +168,37 @@ Zugriff:
 Jede Erstellung/Aenderung/Loeschung wird im Audit-Log protokolliert (`exam.create`/`exam.update`/
 `exam.delete` bzw. `appointment.create`/`appointment.update`/`appointment.delete`).
 
+## Berichtsheft, Tages- und Wochenberichte
+
+Zweite klassenbezogene Fachfunktion nach demselben Muster wie Pruefungen/Termine - die Grundlage
+fuer ein strukturiertes Berichtsheft je Klasse.
+
+**📋 Tagesberichte:**
+
+- `/tagesbericht-erstellen klasse:<A|B|C> datum:<TT.MM.JJJJ> themen:<...> lerninhalte:<...> hinweise:<...> [lernmaterialien:<...>]`
+- `/tagesbericht-bearbeiten bericht-id:<...> [datum:<...>] [themen:<...>] [lerninhalte:<...>] [hinweise:<...>] [lernmaterialien:<...>]`
+- `/tagesbericht-loeschen bericht-id:<...>`
+- `/tagesberichte-anzeigen [klasse:<A|B|C>]` - ohne Angabe wird die eigene Klasse angezeigt
+
+**📅 Wochenberichte:**
+
+- `/wochenbericht-erstellen klasse:<A|B|C> kalenderwoche:<1-53> zeitraum-start:<TT.MM.JJJJ> zeitraum-ende:<TT.MM.JJJJ> themen:<...> lernfortschritt:<...> hinweise:<...>`
+  (das Jahr wird automatisch aus `zeitraum-start` abgeleitet, kein separates Eingabefeld noetig)
+- `/wochenbericht-bearbeiten bericht-id:<...> [kalenderwoche:<...>] [zeitraum-start:<...>] [zeitraum-ende:<...>] [themen:<...>] [lernfortschritt:<...>] [hinweise:<...>]`
+  (Zeitraum-Start und -Ende muessen gemeinsam angegeben werden, wenn der Zeitraum geaendert werden soll)
+- `/wochenbericht-loeschen bericht-id:<...>`
+- `/wochenberichte-anzeigen [klasse:<A|B|C>]`
+
+**📝 Berichtsheft:** `/berichtsheft-anzeigen [klasse:<A|B|C>]` zeigt Tages- und Wochenberichte einer
+Klasse gemeinsam, chronologisch sortiert - die kombinierte Grundlage fuer eine spaetere
+Export-/Ausgabefunktion (siehe ARCHITECTURE.md).
+
+Zugriff und Audit-Logging funktionieren identisch zu Pruefungen/Terminen: Verwalten nur fuer Admin
+oder die Klassenleitung der betroffenen Klasse (`assertClassManagementAccess()`, Klasse beim
+Bearbeiten/Loeschen immer aus dem gespeicherten Datensatz aufgeloest), Lesen fuer jedes
+verifizierte Mitglied der eigenen Klasse (`assertClassReadAccess()`). Protokolliert werden
+`dailyReport.create`/`.update`/`.delete` bzw. `weeklyReport.create`/`.update`/`.delete`.
+
 ## Voraussetzungen
 
 - Node.js 22+
@@ -263,10 +295,12 @@ src/
                                      classService.ts, classAreaService.ts (private
                                      Klassenbereiche), classLeadService.ts (Klassenleitung),
                                      examService.ts / appointmentService.ts (Pruefungen/Termine),
-                                     discordRoleSync.ts (gemeinsame
+                                     dailyReportService.ts / weeklyReportService.ts
+                                     (Tages-/Wochenberichte), berichtsheftService.ts (kombinierte
+                                     Berichtsheft-Sicht), discordRoleSync.ts (gemeinsame
                                      Rollenvergabe-Fehlerbehandlung)
   types/                              Gemeinsame TypeScript-Typen
-  utils/                                Logger, Fehlerklassen
+  utils/                                Logger, Fehlerklassen, dateTime.ts (Datum/Uhrzeit-Parsing)
 prisma/
   schema.prisma                         Datenmodell
   migrations/                            Migrationshistorie
@@ -317,3 +351,8 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   die Klasse dabei immer aus dem gespeicherten Datensatz (`exam.classId`/`appointment.classId`)
   aufgeloest statt aus einem vom Aufrufer angegebenen Parameter, damit eine manipulierte
   Pruefungs-/Termin-ID niemals Zugriff auf eine fremde Klasse verschaffen kann.
+- Tages-/Wochenberichte (Berichtsheft) verwenden dieselben zwei zentralen Funktionen nach
+  demselben Muster: `report.classId` -> `getClassById()` bestimmt beim Bearbeiten/Loeschen immer
+  die tatsaechliche Klasse, nie ein vom Aufrufer angegebener Klassenname. Kalenderwoche (1-53,
+  ganzzahlig) und Zeitraum (Ende darf nicht vor dem Beginn liegen) werden serverseitig validiert,
+  bevor ein Wochenbericht gespeichert wird.
