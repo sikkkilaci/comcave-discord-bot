@@ -1,0 +1,117 @@
+// Prisma-Schema fuer den COMCAVE Discord Bot.
+//
+// Bewusst als Grundgeruest angelegt: die Modelle bilden die Datenstruktur ab,
+// die fuer die geplanten Kernfunktionen (Verifizierung, Onboarding, Klassen,
+// Klassenleitung, Berichte, Moderation, Logging) benoetigt wird. Die dazugehoerige
+// Business-Logik wird schrittweise in spaeteren Iterationen ergaenzt.
+//
+// Datenbank: SQLite (ausreichend fuer eine private Lerngruppe, keine externe
+// Infrastruktur noetig). Bei Bedarf spaeter per `provider` auf Postgres wechselbar.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Konfiguration pro Discord-Server (Bot kann grundsaetzlich auf mehreren
+/// Servern laufen, primaerer Einsatz ist aber ein einzelner privater Server).
+model GuildConfig {
+  id        String   @id // Discord Guild-ID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Rollen-IDs fuer das Berechtigungssystem (siehe src/permissions).
+  adminRoleId    String?
+  moderatorRoleId String?
+  verifiedRoleId String?
+
+  // Kanal-IDs fuer wiederkehrende Bot-Ausgaben.
+  logChannelId       String?
+  welcomeChannelId   String?
+  whereAmIChannelId  String? // #wo-bin-ich
+
+  classes    Class[]
+  members    Member[]
+  auditLogs  AuditLogEntry[]
+}
+
+/// Ein Mitglied der Lerngruppe, verknuepft mit seinem Discord-Account.
+model Member {
+  id        String   @id @default(cuid())
+  guildId   String
+  guild     GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  discordId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Verifizierung / Onboarding.
+  // SQLite kennt keine nativen Enums, daher String mit Validierung in der
+  // Anwendungsschicht (siehe src/types/domain.ts): "PENDING" | "VERIFIED" | "REJECTED".
+  verificationStatus String @default("PENDING")
+  verifiedAt         DateTime?
+  onboardingAnswers  OnboardingAnswer[]
+
+  // Erfassung IT-Erfahrung/Interessen aus dem Onboarding.
+  // Erlaubte Werte (siehe src/types/domain.ts): "KEINE" | "ANFAENGER" | "FORTGESCHRITTEN" | "ERFAHREN".
+  itExperienceLevel String?
+  interests         String? // JSON-kodierte Liste, bis ein dediziertes Interest-Modell noetig ist
+
+  // Klassenzuweisung.
+  classId String?
+  class   Class? @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@unique([guildId, discordId])
+  @@index([classId])
+}
+
+/// Antwort auf eine (ggf. dynamisch gestellte) Onboarding-Frage.
+model OnboardingAnswer {
+  id        String   @id @default(cuid())
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  question  String
+  answer    String
+  createdAt DateTime @default(now())
+
+  @@index([memberId])
+}
+
+/// Eine Klasse (A/B/C). Klassenleitung erhaelt ueber `leadRoleId` administrative
+/// Rechte, die per Permission-System auf genau diese Klasse beschraenkt werden.
+model Class {
+  id        String   @id @default(cuid())
+  guildId   String
+  guild     GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  name        String // z. B. "A", "B", "C"
+  roleId      String? // Discord-Rolle, die Mitglieder dieser Klasse erhalten
+  categoryId  String? // Discord-Kategorie fuer den privaten Klassenbereich
+  leadRoleId  String? // Rolle der Klassenleitung fuer diese Klasse
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members Member[]
+
+  @@unique([guildId, name])
+}
+
+/// Zentrales Audit-Log fuer administrative Aktionen und Moderation.
+model AuditLogEntry {
+  id        String   @id @default(cuid())
+  guildId   String
+  guild     GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  actorDiscordId  String // wer hat die Aktion ausgefuehrt
+  action          String // z. B. "member.verify", "class.assign", "moderation.mute"
+  targetDiscordId String? // betroffenes Mitglied, falls zutreffend
+  metadata        String? // JSON-kodierte Zusatzinfos
+  createdAt       DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}
