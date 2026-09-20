@@ -65,3 +65,21 @@ export async function listLearningMaterialsByClassId(classId: string): Promise<L
     orderBy: [{ category: 'asc' }, { title: 'asc' }],
   });
 }
+
+/**
+ * Loest die Verknuepfung aller Lernmaterialien, die auf `linkedId` verweisen.
+ * linkedType/linkedId sind bewusst kein DB-Fremdschluessel (Pruefung/Tages-/
+ * Wochenbericht ueber ein einzelnes Feld statt drei nullable Relationen) -
+ * ohne diesen Aufruf wuerde nach dem Loeschen des verlinkten Eintrags ein
+ * verwaister Verweis stehen bleiben, der in der UI faelschlich als gueltig
+ * angezeigt wird.
+ */
+export async function clearLearningMaterialLinksTo(
+  linkedType: string,
+  linkedId: string,
+): Promise<void> {
+  await prisma.learningMaterial.updateMany({
+    where: { linkedType, linkedId },
+    data: { linkedType: null, linkedId: null },
+  });
+}

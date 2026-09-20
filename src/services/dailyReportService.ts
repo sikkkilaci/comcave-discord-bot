@@ -10,6 +10,7 @@ import {
   updateDailyReport as updateDailyReportRow,
   type DailyReportUpdate,
 } from '../repositories/dailyReportRepository.js';
+import { clearLearningMaterialLinksTo } from '../repositories/learningMaterialRepository.js';
 import { logAuditEvent } from '../repositories/auditLogRepository.js';
 import {
   assertClassManagementAccess,
@@ -166,6 +167,8 @@ export async function deleteDailyReportForClass(
   assertClassManagementAccess(member, guildConfig, klasse);
 
   await deleteDailyReportRow(reportId);
+  // Verwaiste Verknuepfungen aufloesen, da linkedType/linkedId kein DB-Fremdschluessel ist.
+  await clearLearningMaterialLinksTo('DAILY_REPORT', reportId);
 
   await logAuditEvent({
     guildId: guildConfig.id,

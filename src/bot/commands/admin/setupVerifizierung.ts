@@ -2,8 +2,10 @@ import { ChannelType, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
 import { updateGuildConfig } from '../../../repositories/guildConfigRepository.js';
+import { logAuditEvent } from '../../../repositories/auditLogRepository.js';
 import { ValidationError } from '../../../utils/errors.js';
 import { buildVerificationPrompt } from '../../ui/verificationMessage.js';
+import { roleHasAdministrator } from '../../discordHelpers.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -29,9 +31,24 @@ const command: Command = {
     const role = interaction.options.getRole('rolle', true);
     const channel = interaction.options.getChannel('kanal', false, [ChannelType.GuildText]);
 
+    if (roleHasAdministrator(role)) {
+      throw new ValidationError(
+        `Die Rolle ${role.name} hat Administrator-Rechte. Die Verifiziert-Rolle wird automatisch ` +
+          'jedem neuen Mitglied vergeben und darf daher keine globalen Administratorrechte haben - ' +
+          'bitte eine andere Rolle waehlen.',
+      );
+    }
+
     await updateGuildConfig(interaction.guild.id, {
       verifiedRoleId: role.id,
       ...(channel ? { welcomeChannelId: channel.id } : {}),
+    });
+
+    await logAuditEvent({
+      guildId: interaction.guild.id,
+      actorDiscordId: interaction.user.id,
+      action: 'verification.setup',
+      metadata: { verifiedRoleId: role.id, welcomeChannelId: channel?.id ?? null },
     });
 
     if (channel) {

@@ -9,13 +9,14 @@ import {
 } from '../src/repositories/classRepository.js';
 import { setMemberClass } from '../src/repositories/memberRepository.js';
 import { listAuditEvents } from '../src/repositories/auditLogRepository.js';
-import { createExamForClass } from '../src/services/examService.js';
+import { createExamForClass, deleteExamForClass } from '../src/services/examService.js';
 import {
   createLearningMaterialForClass,
   deleteLearningMaterialForClass,
   listLearningMaterialsForClass,
   updateLearningMaterialForClass,
 } from '../src/services/learningMaterialService.js';
+import { getLearningMaterialById } from '../src/repositories/learningMaterialRepository.js';
 import { NotFoundError, PermissionError, ValidationError } from '../src/utils/errors.js';
 
 function fakeMember(options: {
@@ -434,6 +435,34 @@ describe('learningMaterialService', () => {
 
       const entries = await listAuditEvents(guildId);
       expect(entries.some((e) => e.action === 'learningMaterial.delete')).toBe(true);
+    });
+  });
+
+  describe('Verwaiste Verknuepfung nach Loeschen des verlinkten Eintrags', () => {
+    it('loest linkedType/linkedId auf, wenn die verknuepfte Pruefung geloescht wird', async () => {
+      const { guildId, guildConfig, leadRoleA } = await setupGuildWithClassesAB();
+      const leadA = fakeMember({ id: 'lead-a', roleIds: [leadRoleA] });
+      const exam = await createExamForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { fach: 'Mathe', beschreibung: 'Test', datum: '01.01.2027', uhrzeit: '10:00' },
+        leadA.id,
+      );
+      const material = await createLearningMaterialForClass(
+        guildConfig,
+        leadA,
+        'A',
+        { ...VALID_INPUT, verknuepfungTyp: 'EXAM', verknuepfungId: exam.id },
+        leadA.id,
+      );
+      expect(material.linkedType).toBe('EXAM');
+
+      await deleteExamForClass(guildConfig, leadA, exam.id, leadA.id);
+
+      const reloaded = await getLearningMaterialById(guildId, material.id);
+      expect(reloaded?.linkedType).toBeNull();
+      expect(reloaded?.linkedId).toBeNull();
     });
   });
 

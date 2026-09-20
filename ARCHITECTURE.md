@@ -658,6 +658,11 @@ Design-Entscheidungen:
 - **Kein DB-Fremdschluessel fuer die optionale Verknuepfung.** Siehe Migrations-Hinweis im
   Datenmodell-Abschnitt oben - `linkedType`/`linkedId` sind einfache String-Spalten, deren
   Gueltigkeit (Existenz + Klassenzugehoerigkeit) `resolveLink()` bei jedem Schreibzugriff prueft.
+  Da die DB die Referenz nicht selbst durchsetzt, loesen `deleteExamForClass()`/
+  `deleteDailyReportForClass()`/`deleteWeeklyReportForClass()` die Verknuepfung explizit ueber
+  `clearLearningMaterialLinksTo()` auf, wenn der verknuepfte Datensatz geloescht wird - sonst
+  wuerde ein verwaister Verweis stehen bleiben, den `learningMaterialMessage.ts` faelschlich als
+  gueltig anzeigen wuerde.
 - **Anhang als Metadaten-Verweis, nicht als Datei-Kopie.** Der Bot laedt keine Datei-Inhalte
   herunter oder speichert sie selbst - Discord haelt die Datei auf seinem eigenen CDN vor, das
   Modell speichert nur URL/Name/Content-Type als Referenz. Das entspricht der Anforderung

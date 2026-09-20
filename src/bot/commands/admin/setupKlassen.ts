@@ -3,6 +3,7 @@ import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
 import { updateGuildConfig } from '../../../repositories/guildConfigRepository.js';
 import { updateClassRole } from '../../../repositories/classRepository.js';
+import { logAuditEvent } from '../../../repositories/auditLogRepository.js';
 import { ValidationError } from '../../../utils/errors.js';
 import { CLASS_NAME_LABELS } from '../../../types/domain.js';
 import { buildClassSelectionMessage } from '../../ui/classMessage.js';
@@ -66,6 +67,16 @@ const command: Command = {
     }
 
     await updateGuildConfig(interaction.guild.id, { whereAmIChannelId: channel.id });
+
+    await logAuditEvent({
+      guildId: interaction.guild.id,
+      actorDiscordId: interaction.user.id,
+      action: 'class.setup',
+      metadata: {
+        roles: { A: roleA.id, B: roleB.id, C: roleC.id },
+        whereAmIChannelId: channel.id,
+      },
+    });
 
     try {
       await channel.send(buildClassSelectionMessage(null));

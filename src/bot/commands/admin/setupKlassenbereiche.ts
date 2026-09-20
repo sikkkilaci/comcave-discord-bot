@@ -37,6 +37,13 @@ const command: Command = {
   async execute(interaction) {
     if (!interaction.guild) return;
 
+    // Legt pro Klasse eine Kategorie + sieben Kanaele an (bis zu ~24
+    // sequentielle Discord-API-Aufrufe bei "alle Klassen") - das kann
+    // Discords 3-Sekunden-Fenster fuer die initiale Interaktions-Antwort
+    // ueberschreiten. Defer sofort, damit die Antwort spaeter per
+    // editReply() garantiert noch zustellbar ist.
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const member = interaction.member as GuildMember;
     const guildConfig = await getOrCreateGuildConfig(interaction.guild.id);
     const requested = interaction.options.getString('klasse');
@@ -91,7 +98,7 @@ const command: Command = {
       }
     }
 
-    await interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: lines.join('\n') });
   },
 };
 

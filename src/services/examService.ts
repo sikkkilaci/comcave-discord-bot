@@ -10,6 +10,7 @@ import {
   updateExam as updateExamRow,
   type ExamUpdate,
 } from '../repositories/examRepository.js';
+import { clearLearningMaterialLinksTo } from '../repositories/learningMaterialRepository.js';
 import { logAuditEvent } from '../repositories/auditLogRepository.js';
 import {
   assertClassManagementAccess,
@@ -166,6 +167,8 @@ export async function deleteExamForClass(
   assertClassManagementAccess(member, guildConfig, klasse);
 
   await deleteExamRow(examId);
+  // Verwaiste Verknuepfungen aufloesen, da linkedType/linkedId kein DB-Fremdschluessel ist.
+  await clearLearningMaterialLinksTo('EXAM', examId);
 
   await logAuditEvent({
     guildId: guildConfig.id,

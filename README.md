@@ -359,6 +359,9 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   `getCurrentClassName()` pruefen das jeweils selbst, nicht nur die aufrufende Command-Ebene).
 - `/setup-klassen` verweigert Rollen mit Administrator-Berechtigung als Klassenrolle - eine
   Klassenzugehoerigkeit darf nie globale Admin-Rechte verleihen.
+- `/setup-verifizierung` verweigert ebenso Rollen mit Administrator-Berechtigung als
+  Verifiziert-Rolle, da diese Rolle automatisch und ohne Pruefung an jedes neue Mitglied vergeben
+  wird.
 - Private Klassenbereiche sind ueber echte Discord-Permission-Overwrites abgesichert
   (`@everyone` explizit ausgeschlossen), nicht nur durch Konvention oder Kanal-Anordnung.
 - Die Klassenleitungs-Rolle wird beim Anlegen immer mit `permissions: []` erstellt (keine
@@ -386,4 +389,7 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
   mit einer Pruefung oder einem Bericht wird zusaetzlich serverseitig geprueft: der referenzierte
   Datensatz muss existieren UND zur selben Klasse gehoeren wie das Lernmaterial selbst - eine
   manipulierte Verknuepfungs-ID, die auf eine fremde Klasse zeigt, wird abgelehnt. Die Kategorie
-  wird gegen eine feste, zentral gepflegte Liste validiert.
+  wird gegen eine feste, zentral gepflegte Liste validiert. Wird eine verknuepfte Pruefung bzw. ein
+  verknuepfter Tages-/Wochenbericht geloescht, wird die Verknuepfung (`linkedType`/`linkedId`) auf
+  jedem betroffenen Lernmaterial automatisch aufgeloest, damit keine verwaisten Verweise stehen
+  bleiben (`clearLearningMaterialLinksTo()`).
