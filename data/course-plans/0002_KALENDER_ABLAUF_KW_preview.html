@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ausbildungsplan – Adem Tasdemir</title>
+<style>
+*{box-sizing:border-box}
+:root{
+  --bg:#f3f5f7;--card:#fff;--text:#17202a;--muted:#68727d;
+  --line:#d9dee4;--accent:#1f5f8b;--accent2:#eaf3f9;
+  --free:#f6f6f6;--holiday:#fff5df;--today:#e9f6ed
+}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif}
+.app{max-width:1280px;margin:0 auto;padding:22px}
+header{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:16px}
+h1{margin:0 0 5px;font-size:25px}
+.subtitle{color:var(--muted);font-size:14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px}
+button,select,input{font:inherit}
+button,select,input{border:1px solid #b9c2cb;border-radius:8px;background:#fff;padding:9px 11px}
+button{cursor:pointer;font-weight:600}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.spacer{flex:1}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:14px}
+.legend span{display:flex;align-items:center;gap:5px}
+.dot{width:12px;height:12px;border-radius:3px;border:1px solid #cbd2d8;display:inline-block}
+.dot.course{background:var(--accent2)}.dot.free{background:var(--free)}.dot.holiday{background:var(--holiday)}.dot.today{background:var(--today)}
+.calendar{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.calhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.calhead h2{margin:0;font-size:19px}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
+.weekday{font-size:12px;color:var(--muted);font-weight:bold;padding:5px 7px;text-align:center}
+.week{min-height:108px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px;cursor:pointer;transition:.12s}
+.week:hover{border-color:var(--accent);box-shadow:0 2px 8px #0001}
+.week.active{outline:2px solid var(--accent)}
+.weeknum{font-size:12px;font-weight:bold;color:var(--accent);display:flex;justify-content:space-between}
+.range{font-size:11px;color:var(--muted);margin:4px 0 7px}
+.course{font-size:11px;line-height:1.25;font-weight:600}
+.courseid{color:var(--accent);font-weight:700}
+.free{font-size:11px;color:#777;font-weight:600}
+.holiday{font-size:10px;color:#8b641d;margin-top:5px}
+.detail{margin-top:16px;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.detailhead{padding:18px 20px;border-bottom:1px solid var(--line);background:#fbfcfd}
+.detailhead h2{margin:0 0 5px;font-size:21px}
+.detailhead .small{color:var(--muted);font-size:13px}
+.detailbody{padding:18px 20px}
+.info{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.info .box{border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.label{font-size:11px;color:var(--muted);margin-bottom:4px}
+.value{font-size:14px;font-weight:700}
+.days{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
+.day{border:1px solid var(--line);border-radius:9px;padding:11px;min-height:105px}
+.day.today{background:var(--today)}
+.daytitle{font-weight:bold;font-size:13px}
+.date{font-size:12px;color:var(--muted);margin:3px 0 8px}
+.daycourse{font-size:12px;line-height:1.35}
+.dayid{font-weight:bold;color:var(--accent)}
+.note{margin-top:14px;color:var(--muted);font-size:12px}
+.footer{margin-top:14px;color:#7b848d;font-size:11px;text-align:center}
+@media(max-width:900px){
+ .info{grid-template-columns:1fr 1fr}.days{grid-template-columns:1fr 1fr}
+ .week{grid-template-columns:65px 150px 1fr 20px}
+}
+@media(max-width:600px){
+ .app{padding:10px}.grid{gap:5px}
+ .week{padding:9px 10px;grid-template-columns:52px 1fr 20px}
+ .week .range{grid-column:2}.week .course{grid-column:1/4}
+ .course{font-size:11px}.range{font-size:10px}.info,.days{grid-template-columns:1fr}
+}
+@media print{
+ body{background:#fff}.toolbar{display:none}.app{max-width:none;padding:0}
+ header,.calendar,.detail{border:0;box-shadow:none}.calendar{padding:0}.detail{page-break-before:always}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <h1>Ausbildungsplan – Adem Tasdemir</h1>
+  <div class="subtitle">Fachinformatiker für Systemintegration · KWs ab Ausbildungsbeginn kompakt dargestellt</div>
+  <div class="toolbar">
+    <button onclick="changeYear(-1)">‹</button>
+    <select id="yearSelect" onchange="render()">
+      <option value="2026">2026</option><option value="2027">2027</option>
+    </select>
+    <button onclick="changeYear(1)">›</button>
+    <button class="primary" onclick="selectCurrentWeek()">Aktuelle KW</button>
+    <input id="search" placeholder="Suche Kursnummer, Thema oder Dozent …" oninput="render()">
+    <div class="spacer"></div>
+    <button onclick="window.print()">Drucken / PDF</button>
+  </div>
+  <div class="legend">
+    <span><i class="dot course"></i> Unterricht / Kurs</span>
+    <span><i class="dot free"></i> Unterrichtsfrei / kein Kurs</span>
+    <span><i class="dot holiday"></i> Feiertag / besonderer Termin</span>
+    <span><i class="dot today"></i> aktuelle Woche</span>
+  </div>
+</header>
+
+<section class="calendar">
+  <div class="calhead">
+    <h2 id="calTitle"></h2>
+    <div id="count"></div>
+  </div>
+  <div class="grid" id="calendarGrid"></div>
+</section>
+
+<section class="detail" id="detail"></section>
+<div class="footer">Datenbasis: persönlicher Ausbildungsplan / Berichtsheft-Daten. Alle ISO-Kalenderwochen werden angezeigt; Wochen ohne hinterlegten Kurs erscheinen als „Unterrichtsfrei / kein Kurs“. Nicht eingetragene Dozenten werden als „nicht angegeben“ dargestellt.</div>
+</div>
+
+<script>
+const courses = [
+ {id:"567469",name:"Einführung fachbezogenes Rechnen / Digitaltechnik",start:"2026-08-17",end:"2026-08-25",trainer:"Herr Wolfgang Brach"},
+ {id:"567469",name:"Einführung fachbezogenes Rechnen / Digitaltechnik",start:"2026-08-26",end:"2026-08-27",trainer:"Herr Henrik Koch"},
+ {id:"567470",name:"Einführung Programmierung",start:"2026-08-28",end:"2026-09-07",trainer:"Herr Alessandro Donato Pacifico"},
+ {id:"567471",name:"Einführung Netzwerktechnik",start:"2026-09-08",end:"2026-09-18",trainer:"Herr Peter Schmidt"},
+ {id:"567472",name:"Allgemeine Betriebswirtschaftslehre",start:"2026-09-21",end:"2026-10-06",trainer:"Herr Michael Werni"},
+ {id:"571301",name:"Qualitätsmanagement, IT-Sicherheit und Datenschutz Teil I",start:"2026-10-07",end:"2026-10-20",trainer:""},
+ {id:"567474",name:"Netzwerk- und Kommunikationstechnik",start:"2026-10-21",end:"2026-11-13",trainer:"Herr Michael Mündelein"},
+ {id:"567475",name:"Systemtechnik Teil I",start:"2026-11-16",end:"2026-11-27",trainer:"Herr Michael Mündelein"},
+ {id:"567476",name:"Leistungserbringung / -bewertung, Kundenbeziehungsmanagement",start:"2026-11-30",end:"2026-12-17",trainer:""},
+ {id:"567553",name:"Prozedurale und Objektorientierte Programmierung",start:"2027-01-07",end:"2027-02-08",trainer:""},
+ {id:"567554",name:"Technisches Englisch",start:"2027-02-09",end:"2027-02-19",trainer:""},
+ {id:"567555",name:"Branchenspezifische ERP-Software",start:"2027-02-22",end:"2027-03-04",trainer:""},
+ {id:"567556",name:"Datenbanken Teil I",start:"2027-03-05",end:"2027-03-05",trainer:""},
+ {id:"558953",name:"Bewerbungstraining / Integrationsunterstützung",start:"2027-03-08",end:"2027-03-08",trainer:""},
+ {id:"567557",name:"Datenbanken Teil II",start:"2027-03-09",end:"2027-03-23",trainer:""},
+ {id:"571302",name:"Qualitätsmanagement, IT-Sicherheit und Datenschutz Teil II",start:"2027-03-24",end:"2027-04-14",trainer:""},
+ {id:"567559",name:"Systemtechnik Teil II",start:"2027-04-15",end:"2027-04-20",trainer:"Herr Michael Mündelein"},
+ {id:"571309",name:"Fachrichtungsübergreifendes Modul II Fachinformatiker/-in",start:"2027-04-21",end:"2027-05-03",trainer:""}
+];
+
+const special = [
+ {start:"2026-10-03",end:"2026-10-03",label:"Tag der Deutschen Einheit"},
+ {start:"2026-10-31",end:"2026-11-01",label:"Unterrichtsfreie Zeit / Reformationstag"},
+ {start:"2026-12-18",end:"2027-01-06",label:"Unterrichtsfreie Zeit"}
+];
+
+let selectedWeek = null;
+
+function pad(n){return String(n).padStart(2,"0")}
+function iso(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())}
+function dateDE(d){return pad(d.getDate())+"."+pad(d.getMonth()+1)+"."+d.getFullYear()}
+function monday(d){
+  const x=new Date(d); const day=x.getDay()||7; x.setDate(x.getDate()-day+1); x.setHours(0,0,0,0); return x;
+}
+function isoWeek(d){
+  const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day=x.getUTCDay()||7; x.setUTCDate(x.getUTCDate()+4-day);
+  const y=new Date(Date.UTC(x.getUTCFullYear(),0,1));
+  return Math.ceil((((x-y)/86400000)+1)/7);
+}
+function mondayOfWeek(year,week){
+  const d=new Date(year,0,4); d.setDate(d.getDate()-(d.getDay()||7)+1+(week-1)*7); return d;
+}
+function courseForDate(d){
+  const x=iso(d);
+  return courses.find(c=>x>=c.start&&x<=c.end)||null;
+}
+function specialForDate(d){
+  const x=iso(d);
+  return special.find(s=>x>=s.start&&x<=s.end)||null;
+}
+function fmtRange(mon){
+  const sun=new Date(mon);sun.setDate(sun.getDate()+6);
+  return dateDE(mon)+" – "+dateDE(sun);
+}
+function matches(c,q){
+  if(!q)return true;
+  q=q.toLowerCase();
+  return [c.id,c.name,c.trainer].join(" ").toLowerCase().includes(q);
+}
+
+function render(){
+  const year=+document.getElementById("yearSelect").value;
+  const q=document.getElementById("search").value.trim();
+  document.getElementById("calTitle").textContent=year===2026
+    ?"Ausbildungswochen ab KW 34"
+    :"Ausbildungswochen "+year;
+
+  const grid=document.getElementById("calendarGrid");
+  grid.innerHTML="";
+  const weeks = year===2026 ? Array.from({length:20},(_,i)=>34+i) : Array.from({length:53},(_,i)=>i+1);
+  let shown=0;
+
+  weeks.forEach(w=>{
+    const mon=mondayOfWeek(year,w);
+    if(mon.getFullYear()>year) return;
+
+    const dates=Array.from({length:7},(_,i)=>{
+      const d=new Date(mon);d.setDate(d.getDate()+i);return d
+    });
+    const weekCourses=dates.map(courseForDate).filter(Boolean);
+    const unique=[...new Map(weekCourses.map(c=>[c.id+"|"+c.trainer,c])).values()];
+    const weekSpecial=dates.map(specialForDate).filter(Boolean)[0];
+
+    if(q && !unique.some(c=>matches(c,q)) &&
+       !(weekSpecial&&weekSpecial.label.toLowerCase().includes(q.toLowerCase()))) return;
+
+    shown++;
+    const box=document.createElement("div");
+    box.className="week";
+    if(selectedWeek&&selectedWeek.year===year&&selectedWeek.week===w)box.classList.add("active");
+    const current=new Date();
+    if(isoWeek(current)===w&&current.getFullYear()===year)box.classList.add("today");
+    box.onclick=()=>selectWeek(year,w);
+
+    const summary=unique.length
+      ? unique.map(c=>`<span class="courseid">${c.id}</span> ${c.name}`).join(" · ")
+      : "<span class='free'>Unterrichtsfrei / kein Kurs</span>";
+
+    box.innerHTML=`
+      <div class="weeknum"><span>KW ${w}</span><span>${year}</span></div>
+      <div class="range">${fmtRange(mon)}</div>
+      <div class="course">${summary}${weekSpecial?`<div class="holiday">• ${weekSpecial.label}</div>`:""}</div>
+    `;
+    grid.appendChild(box);
+  });
+
+  document.getElementById("count").textContent=shown+" Wochen";
+  if(!selectedWeek || selectedWeek.year!==year ||
+     (year===2026 && selectedWeek.week<34)){
+    selectWeek(year, year===2026?34:1, true);
+  }
+}
+function selectWeek(year,week,silent=false){
+  selectedWeek={year,week};
+  renderDetail();
+  if(!silent)render();
+}
+function renderDetail(){
+  const {year,week}=selectedWeek;
+  const mon=mondayOfWeek(year,week);
+  const fri=new Date(mon);fri.setDate(fri.getDate()+4);
+  const dates=Array.from({length:5},(_,i)=>{const d=new Date(mon);d.setDate(d.getDate()+i);return d});
+  const cs=dates.map(courseForDate).filter(Boolean);
+  const unique=[...new Map(cs.map(c=>[c.id+"|"+c.trainer,c])).values()];
+  const first=unique[0];
+  const trainers=[...new Set(unique.map(c=>c.trainer).filter(Boolean))];
+  const detail=document.getElementById("detail");
+  detail.innerHTML=`
+    <div class="detailhead">
+      <h2>KW ${week} · ${dateDE(mon)} – ${dateDE(new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+6))}</h2>
+      <div class="small">${unique.length?unique.map(c=>c.id+" – "+c.name).join(" · "):"Keine Unterrichtseinheit in dieser Woche"}</div>
+    </div>
+    <div class="detailbody">
+      <div class="info">
+        <div class="box"><div class="label">Kalenderwoche</div><div class="value">KW ${week}</div></div>
+        <div class="box"><div class="label">Zeitraum</div><div class="value">${dateDE(mon)} – ${dateDE(fri)}</div></div>
+        <div class="box"><div class="label">Kursnummer</div><div class="value">${unique.length?unique.map(c=>c.id).join(", "):"—"}</div></div>
+        <div class="box"><div class="label">Dozent(en)</div><div class="value">${trainers.length?trainers.join(", "):"nicht angegeben"}</div></div>
+      </div>
+      <div class="days">${dates.map(d=>{
+        const c=courseForDate(d),s=specialForDate(d),today=iso(d)===iso(new Date());
+        return `<div class="day ${today?"today":""}">
+          <div class="daytitle">${["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"][d.getDay()-1]}</div>
+          <div class="date">${dateDE(d)}</div>
+          ${c?`<div class="daycourse"><div class="dayid">${c.id}</div>${c.name}<br><span style="color:#68727d">${c.trainer||"Dozent nicht angegeben"}</span></div>`:`<div class="free">Unterrichtsfrei / kein Kurs</div>`}
+          ${s?`<div class="holiday">• ${s.label}</div>`:""}
+        </div>`;
+      }).join("")}</div>
+      ${week===34&&year===2026?`<div class="note"><strong>Hinweis:</strong> KW 34 ist der Ausbildungsbeginn. Der Kurs 567469 „Einführung fachbezogenes Rechnen / Digitaltechnik“ läuft vom 17.08.2026 bis 27.08.2026; vom 17.08.–25.08. mit Herrn Wolfgang Brach und am 26.08.–27.08. mit Herrn Henrik Koch.</div>`:""}
+    </div>`;
+}
+function changeYear(delta){
+  const s=document.getElementById("yearSelect");s.value=String(+s.value+delta);selectedWeek=null;render();
+}
+function selectCurrentWeek(){
+  const d=new Date();document.getElementById("yearSelect").value=d.getFullYear();selectedWeek={year:d.getFullYear(),week:isoWeek(d)};render();renderDetail();
+}
+render();
+</script>
+</body>
+</html>
