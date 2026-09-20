@@ -8,7 +8,7 @@ import { buildVerificationPrompt } from '../../ui/verificationMessage.js';
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('setup-verifizierung')
-    .setDescription('Konfiguriert die Verifizierung neuer Mitglieder (nur Admins).')
+    .setDescription('🔐 Konfiguriert die Verifizierung neuer Mitglieder (nur Admins).')
     .addRoleOption((option) =>
       option
         .setName('rolle')

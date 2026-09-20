@@ -7,7 +7,7 @@ import { buildClassSelectionMessage } from '../../ui/classMessage.js';
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('wo-bin-ich')
-    .setDescription('Zeigt die Klassenauswahl an (nach erfolgreicher Verifizierung).'),
+    .setDescription('🏫 Zeigt die Klassenauswahl an (nach erfolgreicher Verifizierung).'),
   permissionLevel: PermissionLevel.EVERYONE,
   async execute(interaction) {
     if (!interaction.guild) return;

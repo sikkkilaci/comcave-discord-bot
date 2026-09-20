@@ -10,7 +10,7 @@ import { VERIFICATION_STATUS_LABELS, type VerificationStatus } from '../../../ty
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('verifizierung-status')
-    .setDescription('Zeigt deinen Verifizierungsstatus an.')
+    .setDescription('🔐 Zeigt deinen Verifizierungsstatus an.')
     .addUserOption((option) =>
       option
         .setName('nutzer')

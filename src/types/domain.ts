@@ -105,8 +105,13 @@ export const CLASS_NAMES = ['A', 'B', 'C'] as const;
 export const classNameSchema = z.enum(CLASS_NAMES);
 export type ClassName = z.infer<typeof classNameSchema>;
 
+// Bewusst humorvolle, aber eindeutige Buchstaben-Emojis statt generischer
+// Symbole - sie lesen sich wie das jeweilige Kuerzel selbst (🅰️/🅱️/🆑) und
+// tauchen dadurch ueberall auf, wo dieses Label verwendet wird (Buttons,
+// Bestaetigungstexte, #wo-bin-ich-Zusammenfassung), ohne separat gepflegt
+// werden zu muessen.
 export const CLASS_NAME_LABELS: Record<ClassName, string> = {
-  A: 'Klasse A',
-  B: 'Klasse B',
-  C: 'Klasse C',
+  A: '🅰️ Klasse A',
+  B: '🅱️ Klasse B',
+  C: '🆑 Klasse C',
 };

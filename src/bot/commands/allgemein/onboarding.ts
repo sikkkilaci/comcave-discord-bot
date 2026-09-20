@@ -8,7 +8,7 @@ const command: Command = {
   data: new SlashCommandBuilder()
     .setName('onboarding')
     .setDescription(
-      'Startet oder setzt den Onboarding-Fragebogen fort (nach erfolgreicher Verifizierung).',
+      '🧑‍💻 Startet oder setzt den Onboarding-Fragebogen fort (nach erfolgreicher Verifizierung).',
     ),
   permissionLevel: PermissionLevel.EVERYONE,
   async execute(interaction) {

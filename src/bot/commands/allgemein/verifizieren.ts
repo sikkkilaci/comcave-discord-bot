@@ -8,7 +8,7 @@ import { buildSafeOnboardingReplyPart } from '../../ui/onboardingMessage.js';
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('verifizieren')
-    .setDescription('Verifiziert dich selbst, um vollen Zugriff auf den Server zu erhalten.'),
+    .setDescription('🔐 Verifiziert dich selbst, um vollen Zugriff auf den Server zu erhalten.'),
   permissionLevel: PermissionLevel.EVERYONE,
   async execute(interaction) {
     if (!interaction.guild) return;

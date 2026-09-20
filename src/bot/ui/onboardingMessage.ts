@@ -14,6 +14,18 @@ import { createChildLogger } from '../../utils/logger.js';
 
 const logger = createChildLogger('ui:onboardingMessage');
 
+/**
+ * Ein Emoji je Frage, rein zur optischen Orientierung im Embed-Titel - bewusst
+ * nur ein Symbol pro Frage (keine zusaetzlichen Emojis pro Auswahloption), um
+ * die Select-Menus selbst uebersichtlich und professionell zu halten.
+ */
+const QUESTION_EMOJI: Record<OnboardingQuestionKey, string> = {
+  IT_EXPERIENCE: '🧑‍💻',
+  IT_SKILLS: '🖥️',
+  IT_BACKGROUND: '💼',
+  INTERESTS: '📚',
+};
+
 /** Prefix der Select-Menu-customId; das Suffix ist der jeweilige OnboardingQuestionKey. */
 export const ONBOARDING_ANSWER_CUSTOM_ID_PREFIX = 'onboarding:answer:';
 export const ONBOARDING_RESTART_CUSTOM_ID = 'onboarding:restart';
@@ -40,7 +52,7 @@ export function buildOnboardingStepMessage(
   const config = ONBOARDING_QUESTION_CONFIG[question];
 
   const embed = new EmbedBuilder()
-    .setTitle(`Onboarding: ${config.title}`)
+    .setTitle(`${QUESTION_EMOJI[question]} Onboarding: ${config.title}`)
     .setDescription(config.description)
     .setColor(0x2b2d31)
     .setFooter({
@@ -85,6 +97,7 @@ export function buildOnboardingSummaryMessage(
   const restartButton = new ButtonBuilder()
     .setCustomId(ONBOARDING_RESTART_CUSTOM_ID)
     .setLabel('Onboarding erneut ausfuellen')
+    .setEmoji('🔄')
     .setStyle(ButtonStyle.Secondary);
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(restartButton);

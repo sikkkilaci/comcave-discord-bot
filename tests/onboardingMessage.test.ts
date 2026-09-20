@@ -18,6 +18,7 @@ interface RawSelectMenu {
 
 interface RawButton {
   custom_id: string;
+  emoji?: { name: string };
 }
 
 describe('onboardingMessage', () => {
@@ -59,6 +60,16 @@ describe('onboardingMessage', () => {
       expect(select.min_values).toBe(1);
       expect(select.max_values).toBeGreaterThan(1);
     });
+
+    it('gibt jeder Frage genau ein Orientierungs-Emoji im Embed-Titel mit', () => {
+      for (const question of ONBOARDING_QUESTIONS) {
+        const { embeds } = buildOnboardingStepMessage(question);
+        const title = embeds[0]?.toJSON().title ?? '';
+
+        expect(title).toMatch(/^\p{Extended_Pictographic}/u);
+        expect(title).toContain('Onboarding:');
+      }
+    });
   });
 
   describe('buildOnboardingSummaryMessage', () => {
@@ -79,6 +90,7 @@ describe('onboardingMessage', () => {
 
       const button = components[0]?.toJSON().components[0] as unknown as RawButton;
       expect(button.custom_id).toBe(ONBOARDING_RESTART_CUSTOM_ID);
+      expect(button.emoji?.name).toBe('🔄');
     });
   });
 

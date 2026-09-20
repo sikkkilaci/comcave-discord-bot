@@ -12,7 +12,7 @@ import {
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('mitglied-verifizieren')
-    .setDescription('Setzt den Verifizierungsstatus eines Mitglieds (nur Admins).')
+    .setDescription('🔐 Setzt den Verifizierungsstatus eines Mitglieds (nur Admins).')
     .addUserOption((option) =>
       option.setName('nutzer').setDescription('Das zu bearbeitende Mitglied').setRequired(true),
     )

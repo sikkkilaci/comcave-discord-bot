@@ -11,7 +11,9 @@ import { roleHasAdministrator } from '../../discordHelpers.js';
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('setup-klassen')
-    .setDescription('Konfiguriert die Klassenrollen A/B/C und den #wo-bin-ich-Kanal (nur Admins).')
+    .setDescription(
+      '🏫 Konfiguriert die Klassenrollen A/B/C und den #wo-bin-ich-Kanal (nur Admins).',
+    )
     .addRoleOption((option) =>
       option.setName('klasse-a').setDescription('Rolle fuer Klasse A').setRequired(true),
     )

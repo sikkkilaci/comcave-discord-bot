@@ -4,7 +4,7 @@ import {
   buildClassSelectionMessage,
   parseClassCustomId,
 } from '../src/bot/ui/classMessage.js';
-import { CLASS_NAMES } from '../src/types/domain.js';
+import { CLASS_NAME_LABELS, CLASS_NAMES } from '../src/types/domain.js';
 
 interface RawButton {
   custom_id: string;
@@ -41,6 +41,17 @@ describe('classMessage', () => {
         'class:select:B',
         'class:select:C',
       ]);
+    });
+
+    it('beschriftet jeden Button mit dem passenden Klassen-Emoji (🅰️/🅱️/🆑)', () => {
+      const { components } = buildClassSelectionMessage(null);
+      const buttons = components[0]?.toJSON().components as unknown as RawButton[];
+
+      for (const name of CLASS_NAMES) {
+        const button = buttons.find((b) => b.custom_id === `class:select:${name}`);
+        expect(button?.label).toBe(CLASS_NAME_LABELS[name]);
+      }
+      expect(buttons.map((b) => b.label)).toEqual(['🅰️ Klasse A', '🅱️ Klasse B', '🆑 Klasse C']);
     });
 
     it('hebt keine Klasse hervor, wenn currentClassName null ist', () => {

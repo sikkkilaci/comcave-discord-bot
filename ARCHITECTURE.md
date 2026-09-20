@@ -42,6 +42,27 @@
    uebersetzt; unerwartete Fehler werden geloggt, aber nicht mit internen Details an Nutzer
    durchgereicht.
 
+## UI-Konventionen: Emojis
+
+Embeds, Buttons und Command-Beschreibungen verwenden gezielt Standard-Unicode-Emojis, um die
+Bedienung uebersichtlicher zu machen, ohne den professionellen COMCAVE-/IT-Look zu verlieren.
+Faustregeln:
+
+- **Ein Emoji pro Titel/Button reicht.** Kein Emoji-Stapeln in einer Zeile oder pro Auswahloption
+  in Select-Menus (`IT_SKILL_LABELS`, `INTEREST_LABELS` etc. bleiben bewusst emoji-frei, sonst
+  wirken die Fragebogen-Dropdowns schnell ueberladen).
+- **Wiedererkennbares Symbol je Themenbereich:** 🔐 Verifizierung, 🧑‍💻 Onboarding/IT-Werdegang,
+  🖥️ technische Kenntnisse, 💼 bisherige Taetigkeit, 📚 Lern-/IT-Interessen, 🏫 Klassenbereich/
+  `#wo-bin-ich`. Fuer die drei Klassen bewusst humorvollere, aber eindeutige Buchstaben-Emojis
+  (🅰️/🅱️/🆑 in `CLASS_NAME_LABELS`, `src/types/domain.ts`) statt eines generischen Symbols.
+- **Zentral in Labels/Konfiguration, nicht dupliziert.** `CLASS_NAME_LABELS` traegt das Emoji
+  direkt im Anzeigetext, wodurch Buttons, #wo-bin-ich-Footer und Bestaetigungstexte
+  (`interactionCreate.ts`, `/setup-klassen`) es automatisch mitbekommen - keine zweite Emoji-Zuordnung
+  parallel pflegen.
+- **Neue Fachbereiche** (Lernmaterial 📚, Pruefungen 🎓, Berichtsheft 📝, Termine 📅, Hilfe 🆘,
+  Sprachkanal 🔊, Klassenleitung 👑 - siehe Roadmap) erhalten ihr Emoji, sobald die zugehoerige
+  UI tatsaechlich existiert; es wird nichts vorab in Commands/Embeds eingebaut, die es noch nicht gibt.
+
 ## Datenmodell (aktueller Stand)
 
 - `GuildConfig`: Konfiguration pro Server (Rollen-IDs, Kanal-IDs). Wird lazy per

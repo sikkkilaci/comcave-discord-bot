@@ -32,7 +32,7 @@ export function buildClassSelectionMessage(
   const embed = new EmbedBuilder()
     .setTitle('Wo bin ich? 🧭')
     .setDescription(
-      'Waehle deine Klasse aus, um Zugriff auf den passenden Klassenbereich zu erhalten. ' +
+      'Waehle deine Klasse aus, um Zugriff auf deinen Klassenbereich 🏫 zu erhalten. ' +
         'Ein Wechsel ist jederzeit moeglich - die alte Klassenrolle wird dabei automatisch entfernt.',
     )
     .setColor(0x2b2d31)

@@ -15,7 +15,7 @@ export interface VerificationPromptMessage {
  */
 export function buildVerificationPrompt(): VerificationPromptMessage {
   const embed = new EmbedBuilder()
-    .setTitle('Willkommen bei der COMCAVE-Lerngruppe!')
+    .setTitle('🔐 Willkommen bei der COMCAVE-Lerngruppe!')
     .setDescription(
       'Um vollen Zugriff auf den Server zu erhalten, bestaetige bitte deine Verifizierung ' +
         'mit einem Klick auf den Button unten.',
