@@ -125,7 +125,14 @@ const CHANNEL_BLUEPRINTS: readonly ChannelBlueprint[] = [
  * wirkt sich nur auf Mitglieder aus, die ueberhaupt in diesen privaten Kanaelen
  * sichtbar sind, also ausschliesslich die eigene Klasse).
  *
- * Bewusst AUSGESCHLOSSEN (niemals Teil dieser Liste oder einer Basis-Rollen-
+ * In TEXT_PERMISSIONS und VOICE_ONLY_PERMISSIONS aufgeteilt, da Discord das
+ * Anlegen eines Textkanals ablehnt (403/50013 "Missing Permissions"), sobald
+ * dessen Overwrites reine Sprachkanal-Bits (Connect/Speak/Mute/Deafen/Move)
+ * enthalten - unabhaengig davon, ob der Bot diese Bits selbst besitzt. Diese
+ * Bits duerfen daher nur in den Overwrites des tatsaechlichen Sprachkanals
+ * (voiceChannelId) landen, nicht in denen der Textkanaele.
+ *
+ * Bewusst AUSGESCHLOSSEN (niemals Teil dieser Listen oder einer Basis-Rollen-
  * berechtigung): Administrator, ManageGuild, ManageRoles, ManageChannels,
  * ManageWebhooks, KickMembers, BanMembers und jede andere serverweite Rechte-
  * Aenderung. "Termine/Events verwalten" wird bewusst NICHT ueber Discords
@@ -135,7 +142,7 @@ const CHANNEL_BLUEPRINTS: readonly ChannelBlueprint[] = [
  * Termine-Kanal (siehe scheduleChannelId), was das eigentliche Bedürfnis
  * abdeckt, ohne serverweite Rechte zu vergeben (Fail-closed-Entscheidung).
  */
-const CLASS_LEAD_CHANNEL_PERMISSIONS: bigint[] = [
+const CLASS_LEAD_TEXT_PERMISSIONS: bigint[] = [
   PermissionFlagsBits.ViewChannel,
   PermissionFlagsBits.SendMessages,
   PermissionFlagsBits.ReadMessageHistory,
@@ -147,12 +154,15 @@ const CLASS_LEAD_CHANNEL_PERMISSIONS: bigint[] = [
   PermissionFlagsBits.SendMessagesInThreads,
   PermissionFlagsBits.ManageThreads,
   PermissionFlagsBits.MentionEveryone,
+  PermissionFlagsBits.ModerateMembers,
+];
+
+const CLASS_LEAD_VOICE_ONLY_PERMISSIONS: bigint[] = [
   PermissionFlagsBits.Connect,
   PermissionFlagsBits.Speak,
   PermissionFlagsBits.MuteMembers,
   PermissionFlagsBits.DeafenMembers,
   PermissionFlagsBits.MoveMembers,
-  PermissionFlagsBits.ModerateMembers,
 ];
 
 export interface ClassAreaSetupResult {
@@ -206,6 +216,7 @@ export async function setupClassArea(
 
     const overwrites = buildOverwrites(guild, guildConfig, klasse, {
       classCanSend: !blueprint.readOnlyForClass,
+      includeVoicePermissions: blueprint.type === ChannelType.GuildVoice,
     });
 
     const channel = await createChannelOrThrow(guild, {
@@ -271,7 +282,13 @@ async function ensureCategory(
     if (existing) return { id: existing.id, created: false };
   }
 
-  const overwrites = buildOverwrites(guild, guildConfig, klasse, { classCanSend: true });
+  // Kategorie-Overwrites duerfen (im Unterschied zu Text-Kanaelen) Sprachkanal-Bits enthalten -
+  // eine Kategorie hat keinen eigenen Kanaltyp, Discord validiert Overwrite-Bits nur gegen den
+  // tatsaechlichen Kanaltyp bei Text-/Sprachkanaelen selbst (siehe buildOverwrites()-Kommentar).
+  const overwrites = buildOverwrites(guild, guildConfig, klasse, {
+    classCanSend: true,
+    includeVoicePermissions: true,
+  });
   const category = await createChannelOrThrow(guild, {
     name: `📁 Klasse ${klasse.name}`,
     type: ChannelType.GuildCategory,
@@ -295,19 +312,17 @@ function buildOverwrites(
   guild: Guild,
   guildConfig: GuildConfig,
   klasse: Class,
-  options: { classCanSend: boolean },
+  options: { classCanSend: boolean; includeVoicePermissions: boolean },
 ): OverwriteResolvable[] {
   const overwrites: OverwriteResolvable[] = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
   ];
 
   if (klasse.roleId) {
-    const allow = [
-      PermissionFlagsBits.ViewChannel,
-      PermissionFlagsBits.ReadMessageHistory,
-      PermissionFlagsBits.Connect,
-      PermissionFlagsBits.Speak,
-    ];
+    const allow = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
+    if (options.includeVoicePermissions) {
+      allow.push(PermissionFlagsBits.Connect, PermissionFlagsBits.Speak);
+    }
     if (options.classCanSend) {
       allow.push(
         PermissionFlagsBits.SendMessages,
@@ -323,36 +338,42 @@ function buildOverwrites(
   }
 
   if (guildConfig.adminRoleId) {
-    overwrites.push({
-      id: guildConfig.adminRoleId,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.Connect,
-        PermissionFlagsBits.Speak,
-      ],
-    });
+    const allow = [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.ReadMessageHistory,
+    ];
+    if (options.includeVoicePermissions) {
+      allow.push(PermissionFlagsBits.Connect, PermissionFlagsBits.Speak);
+    }
+    overwrites.push({ id: guildConfig.adminRoleId, allow });
   }
 
   if (guildConfig.moderatorRoleId) {
-    overwrites.push({
-      id: guildConfig.moderatorRoleId,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
+    const allow = [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.ReadMessageHistory,
+    ];
+    if (options.includeVoicePermissions) {
+      allow.push(
         PermissionFlagsBits.Connect,
         PermissionFlagsBits.Speak,
         PermissionFlagsBits.MuteMembers,
         PermissionFlagsBits.DeafenMembers,
         PermissionFlagsBits.MoveMembers,
-      ],
-    });
+      );
+    }
+    overwrites.push({ id: guildConfig.moderatorRoleId, allow });
   }
 
   if (klasse.leadRoleId) {
-    overwrites.push({ id: klasse.leadRoleId, allow: CLASS_LEAD_CHANNEL_PERMISSIONS });
+    overwrites.push({
+      id: klasse.leadRoleId,
+      allow: options.includeVoicePermissions
+        ? [...CLASS_LEAD_TEXT_PERMISSIONS, ...CLASS_LEAD_VOICE_ONLY_PERMISSIONS]
+        : CLASS_LEAD_TEXT_PERMISSIONS,
+    });
   }
 
   return overwrites;
@@ -430,10 +451,14 @@ function collectAllowedBits(
  * "Kanaele verwalten"-Berechtigung. Ohne diese Vorab-Pruefung wuerde
  * createChannelOrThrow() faelschlich IMMER "Kanaele verwalten" als Ursache
  * melden, selbst wenn der Bot diese Berechtigung laengst hat und in
- * Wirklichkeit z. B. "Verbinden"/"Sprechen" fehlt (beide werden von
- * buildOverwrites() auch fuer Text-Kanaele an Klassen-/Admin-Rolle vergeben,
- * nicht nur fuer den Sprachkanal). Wirft ValidationError mit den tatsaechlich
- * fehlenden Berechtigungen, statt zu raten.
+ * Wirklichkeit ein anderes, per Overwrite vergebenes Bit fehlt. Deckt NICHT
+ * den separaten Discord-Sonderfall ab, dass reine Sprachkanal-Bits (Connect/
+ * Speak/Mute/Deafen/Move) in den Overwrites eines TEXT-Kanals selbst dann
+ * abgelehnt werden, wenn der Bot sie besitzt - dagegen schuetzt stattdessen
+ * buildOverwrites()' includeVoicePermissions-Parameter, der diese Bits von
+ * vornherein nur fuer den tatsaechlichen Sprachkanal in die Overwrites
+ * aufnimmt. Wirft ValidationError mit den tatsaechlich fehlenden
+ * Berechtigungen, statt zu raten.
  */
 async function assertBotCanApplyOverwrites(
   guild: Guild,

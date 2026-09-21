@@ -289,6 +289,58 @@ describe('classAreaService', () => {
         PermissionFlagsBits.SendMessages,
       );
     });
+
+    it(
+      'vergibt reine Sprachkanal-Rechte (Verbinden/Sprechen/Stummschalten/Isolieren/' +
+        'Verschieben) ausschliesslich auf dem Sprachkanal, nie auf Textkanaelen - Discord lehnt ' +
+        'sonst das Anlegen des Textkanals komplett mit 403/50013 "Missing Permissions" ab, selbst ' +
+        'wenn der Bot diese Bits selbst besitzt',
+      async () => {
+        const adminRoleId = `role-admin-${randomUUID()}`;
+        const { guildId, guildConfig, roleId } = await setupGuildAndClass({ adminRoleId });
+        const leadRoleId = `role-lead-${randomUUID()}`;
+        await prisma.class.update({
+          where: { guildId_name: { guildId, name: 'A' } },
+          data: { leadRoleId },
+        });
+        const klasseWithLead = (await getClassByName(guildId, 'A'))!;
+
+        const { guild, createCalls } = fakeGuild({});
+        await setupClassArea(guild, guildConfig, klasseWithLead, 'actor-1');
+
+        const voiceOnlyBits = [
+          PermissionFlagsBits.Connect,
+          PermissionFlagsBits.Speak,
+          PermissionFlagsBits.MuteMembers,
+          PermissionFlagsBits.DeafenMembers,
+          PermissionFlagsBits.MoveMembers,
+        ];
+
+        const textChannels = createCalls.filter(
+          (c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildCategory,
+        );
+        for (const textChannel of textChannels) {
+          if (textChannel.type === ChannelType.GuildCategory) continue; // Kategorie darf Sprach-Bits enthalten.
+          for (const targetRoleId of [roleId, adminRoleId, leadRoleId]) {
+            const overwrite = overwriteFor(textChannel, targetRoleId);
+            for (const bit of voiceOnlyBits) {
+              expect(overwrite?.allow ?? []).not.toContain(bit);
+            }
+          }
+        }
+
+        const voice = createCalls.find((c) => c.name === '🔊-sprachkanal');
+        expect(overwriteFor(voice!, roleId)?.allow).toEqual(
+          expect.arrayContaining([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak]),
+        );
+        expect(overwriteFor(voice!, adminRoleId)?.allow).toEqual(
+          expect.arrayContaining([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak]),
+        );
+        expect(overwriteFor(voice!, leadRoleId)?.allow).toEqual(
+          expect.arrayContaining(voiceOnlyBits),
+        );
+      },
+    );
   });
 
   describe('setupClassArea - Idempotenz und Selbstheilung', () => {
