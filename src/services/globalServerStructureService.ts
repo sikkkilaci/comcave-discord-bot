@@ -127,6 +127,11 @@ export async function ensureGlobalServerStructure(
   const verifiedRoleId = guildConfig.verifiedRoleId;
   const adminRoleId = guildConfig.adminRoleId;
   const moderatorRoleId = guildConfig.moderatorRoleId;
+  const botMember = guild.members.me;
+  const botRoleId = botMember?.roles.highest.id;
+  if (!botRoleId) {
+    throw new ValidationError('Die Bot-Rolle konnte für den Serveraufbau nicht ermittelt werden.');
+  }
 
   if (!verifiedRoleId || !adminRoleId || !moderatorRoleId) {
     throw new ValidationError('Die Grundrollen müssen vor dem Serveraufbau konfiguriert sein.');
@@ -142,13 +147,13 @@ export async function ensureGlobalServerStructure(
       category = await guild.channels.create({
         name: categoryBlueprint.name,
         type: ChannelType.GuildCategory,
-        permissionOverwrites: buildOverwrites(guild, categoryBlueprint.access, verifiedRoleId, adminRoleId, moderatorRoleId, false),
+        permissionOverwrites: buildOverwrites(guild, categoryBlueprint.access, verifiedRoleId, adminRoleId, moderatorRoleId, botRoleId, false),
         reason: 'COMCAVE-Plattform: globale Serverstruktur',
       });
       result.categoriesCreated.push(categoryBlueprint.name);
     } else {
       await category.permissionOverwrites.set(
-        buildOverwrites(guild, categoryBlueprint.access, verifiedRoleId, adminRoleId, moderatorRoleId, false),
+        buildOverwrites(guild, categoryBlueprint.access, verifiedRoleId, adminRoleId, moderatorRoleId, botRoleId, false),
         'COMCAVE-Plattform: globale Kategorie-Berechtigungen',
       );
     }
@@ -171,6 +176,7 @@ export async function ensureGlobalServerStructure(
               verifiedRoleId,
               adminRoleId,
               moderatorRoleId,
+              botRoleId,
               blueprint.readOnly ?? false,
             ),
             'COMCAVE-Plattform: globale Kanalstruktur',
@@ -200,6 +206,7 @@ export async function ensureGlobalServerStructure(
           verifiedRoleId,
           adminRoleId,
           moderatorRoleId,
+          botRoleId,
           blueprint.readOnly ?? false,
         ),
         ...(blueprint.topic && blueprint.type === ChannelType.GuildText ? { topic: blueprint.topic } : {}),
@@ -219,6 +226,7 @@ function buildOverwrites(
   verifiedRoleId: string,
   adminRoleId: string,
   moderatorRoleId: string,
+  botRoleId: string,
   readOnly: boolean,
 ): OverwriteResolvable[] {
   const baseRead = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
@@ -256,6 +264,16 @@ function buildOverwrites(
     });
   }
 
+  const botPermissions = [
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.ReadMessageHistory,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.EmbedLinks,
+    PermissionFlagsBits.AttachFiles,
+    PermissionFlagsBits.ManageChannels,
+    PermissionFlagsBits.ManageWebhooks,
+  ];
+
   const staffPermissions = [
     PermissionFlagsBits.ViewChannel,
     PermissionFlagsBits.ReadMessageHistory,
@@ -264,6 +282,7 @@ function buildOverwrites(
     PermissionFlagsBits.AttachFiles,
   ];
 
+  overwrites.push({ id: botRoleId, allow: botPermissions });
   overwrites.push({ id: adminRoleId, allow: staffPermissions });
   overwrites.push({ id: moderatorRoleId, allow: staffPermissions });
 
