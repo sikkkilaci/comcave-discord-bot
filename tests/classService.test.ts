@@ -10,7 +10,12 @@ import {
 } from '../src/repositories/memberRepository.js';
 import { setVerificationStatus } from '../src/repositories/memberRepository.js';
 import { listAuditEvents } from '../src/repositories/auditLogRepository.js';
-import { assignClass, getCurrentClassName } from '../src/services/classService.js';
+import {
+  assignClass,
+  getConfirmedClassOverview,
+  getCurrentClassName,
+  requestClassHelp,
+} from '../src/services/classService.js';
 import { PermissionError, ValidationError } from '../src/utils/errors.js';
 
 function fakeGuildMember(
@@ -345,6 +350,133 @@ describe('classService', () => {
       await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
 
       await expect(getCurrentClassName(guildId, discordId)).rejects.toBeInstanceOf(PermissionError);
+    });
+  });
+
+  describe('getConfirmedClassOverview', () => {
+    it('liefert fuer alle drei Klassen leere Listen, wenn noch niemand bestaetigt zugeordnet ist', async () => {
+      const { guildId } = await setupGuildWithClasses();
+
+      const overview = await getConfirmedClassOverview(guildId);
+
+      expect(overview).toEqual({ A: [], B: [], C: [] });
+    });
+
+    it('gruppiert bestaetigte Teilnehmer korrekt nach Klasse (A/B/C)', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+
+      const discordIdA1 = await createVerifiedDiscordId(guildId);
+      await updatePersonalDetails(guildId, discordIdA1, { firstName: 'Adem' });
+      await assignClass(fakeGuildMember(discordIdA1), guildConfig, 'A', discordIdA1);
+
+      const discordIdA2 = await createVerifiedDiscordId(guildId);
+      await updatePersonalDetails(guildId, discordIdA2, { firstName: 'Cem' });
+      await assignClass(fakeGuildMember(discordIdA2), guildConfig, 'A', discordIdA2);
+
+      const discordIdB = await createVerifiedDiscordId(guildId);
+      await updatePersonalDetails(guildId, discordIdB, { firstName: 'Dominik' });
+      await assignClass(fakeGuildMember(discordIdB), guildConfig, 'B', discordIdB);
+
+      const overview = await getConfirmedClassOverview(guildId);
+
+      expect(overview.A).toEqual(['Adem', 'Cem']);
+      expect(overview.B).toEqual(['Dominik']);
+      expect(overview.C).toEqual([]);
+    });
+
+    it('zeigt NUR bestaetigte Klassenzuordnungen - Profil/Fachrichtung allein reicht nicht', async () => {
+      const { guildId } = await setupGuildWithClasses();
+
+      const discordId = await createVerifiedDiscordId(guildId);
+      await updatePersonalDetails(guildId, discordId, { firstName: 'NichtZugeordnet' });
+
+      const overview = await getConfirmedClassOverview(guildId);
+
+      expect(overview.A).not.toContain('NichtZugeordnet');
+      expect(overview.B).not.toContain('NichtZugeordnet');
+      expect(overview.C).not.toContain('NichtZugeordnet');
+    });
+
+    it('ueberspringt Mitglieder ohne gesetzten Vornamen statt leerer Eintraege', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = await createVerifiedDiscordId(guildId);
+      await assignClass(fakeGuildMember(discordId), guildConfig, 'A', discordId);
+
+      const overview = await getConfirmedClassOverview(guildId);
+
+      expect(overview.A).toEqual([]);
+    });
+  });
+
+  describe('requestClassHelp', () => {
+    it('wirft PermissionError fuer unverifizierte Mitglieder', async () => {
+      const { guildConfig } = await setupGuildWithClasses();
+      const member = fakeGuildMember(`discord-${randomUUID()}`);
+
+      await expect(requestClassHelp(guildConfig, member, member.id)).rejects.toBeInstanceOf(
+        PermissionError,
+      );
+    });
+
+    it('schreibt einen "class.help_requested"-Audit-Log-Eintrag ohne personenbezogene Metadaten', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = await createVerifiedDiscordId(guildId);
+      const member = fakeGuildMember(discordId);
+
+      await requestClassHelp(guildConfig, member, discordId);
+
+      const auditEntries = await listAuditEvents(guildId, {
+        targetDiscordId: discordId,
+        action: 'class.help_requested',
+      });
+      expect(auditEntries).toHaveLength(1);
+      expect(auditEntries[0]?.actorDiscordId).toBe(discordId);
+      expect(auditEntries[0]?.metadata).toBeNull();
+    });
+
+    it('persistiert keine Klassenzuordnung als Nebeneffekt', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = await createVerifiedDiscordId(guildId);
+      const member = fakeGuildMember(discordId);
+
+      await requestClassHelp(guildConfig, member, discordId);
+
+      const stored = await getMemberWithClass(guildId, discordId);
+      expect(stored?.classId).toBeNull();
+    });
+  });
+
+  describe('assignClass - Race Condition (gleichzeitige Erstbestaetigung)', () => {
+    it('bei zwei gleichzeitigen Erstzuweisungen desselben Mitglieds gewinnt genau eine - keine inkonsistente Zuordnung', async () => {
+      const { guildId, guildConfig, roleA, roleB } = await setupGuildWithClasses();
+      const discordId = await createVerifiedDiscordId(guildId);
+      const memberForA = fakeGuildMember(discordId);
+      const memberForB = fakeGuildMember(discordId);
+
+      const results = await Promise.allSettled([
+        assignClass(memberForA, guildConfig, 'A', discordId),
+        assignClass(memberForB, guildConfig, 'B', discordId),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(PermissionError);
+
+      const stored = await getMemberWithClass(guildId, discordId);
+      expect(['A', 'B']).toContain(stored?.class?.name);
+
+      if (stored?.class?.name === 'A') {
+        expect(memberForA.roles.add).toHaveBeenCalledWith(roleA, expect.any(String));
+        expect(memberForB.roles.add).not.toHaveBeenCalled();
+      } else {
+        expect(memberForB.roles.add).toHaveBeenCalledWith(roleB, expect.any(String));
+        expect(memberForA.roles.add).not.toHaveBeenCalled();
+      }
+
+      const auditEntries = await listAuditEvents(guildId, { targetDiscordId: discordId });
+      expect(auditEntries).toHaveLength(1);
     });
   });
 });

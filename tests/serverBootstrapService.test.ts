@@ -550,8 +550,8 @@ describe('serverBootstrapService', () => {
 
     it(
       'legt den Schulhof-Kanal ganz oben (position 0) ausserhalb jeder Kategorie an, sichtbar ' +
-        'fuer die Mitglied-Rolle (nicht @everyone) - klassenuebergreifender Talk fuer ALLE ' +
-        'vollstaendig onboardeten Mitglieder',
+        'fuer die Verifiziert-Rolle (nicht @everyone, NICHT erst ab der Mitglied-Rolle) - ' +
+        'klassenuebergreifender Talk auch fuer Mitglieder mit noch ungeklaerter Klasse',
       async () => {
         const { guild, channelCreateCalls } = fakeGuild({});
 
@@ -567,10 +567,17 @@ describe('serverBootstrapService', () => {
         );
         expect(everyoneOverwrite?.deny).toContain(BigInt(1) << BigInt(10));
 
+        const verifiedOverwrite = schulhofCreateCall?.permissionOverwrites?.find(
+          (o) => o.id === result.verifiedRole.id,
+        );
+        expect(verifiedOverwrite?.allow).toContain(BigInt(1) << BigInt(11)); // SendMessages
+
+        // Die Mitglied-Rolle bekommt hier bewusst KEINEN eigenen Overwrite-Eintrag - Schulhof
+        // haengt allein an der Verifiziert-Rolle.
         const onboardedOverwrite = schulhofCreateCall?.permissionOverwrites?.find(
           (o) => o.id === result.onboardedRole.id,
         );
-        expect(onboardedOverwrite?.allow).toContain(BigInt(1) << BigInt(11)); // SendMessages
+        expect(onboardedOverwrite).toBeUndefined();
       },
     );
 

@@ -239,4 +239,35 @@ describe('grantOnboardedRoleIfComplete', () => {
     ).resolves.toBeUndefined();
     expect(member.roles.add).not.toHaveBeenCalled();
   });
+
+  it('vergibt die Mitglied-Rolle NICHT, solange keine Klasse bestaetigt ist - auch wenn Profil und Fachrichtung bereits vollstaendig sind', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const discordId = `discord-${randomUUID()}`;
+    const guildConfig = await updateGuildConfig(guildId, { onboardedRoleId: 'role-onboarded' });
+    await setVerificationStatus(guildId, discordId, 'VERIFIED');
+    const { location } = await upsertLocation({
+      code: `code-${randomUUID()}`,
+      name: 'COMCAVE Test',
+      state: 'Teststate',
+      city: 'Teststadt',
+      postalCode: '11111',
+    });
+    await updatePersonalDetails(guildId, discordId, {
+      firstName: 'Max',
+      lastName: 'Mustermann',
+      age: 25,
+      locationId: location.id,
+      profileCompletedAt: new Date(),
+    });
+    await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
+    // Bewusst KEINE Klasse zugewiesen - der naechste offene Schritt ist NEEDS_CLASS.
+    const member = fakeMemberWithRoles(discordId);
+
+    expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_CLASS');
+
+    await grantOnboardedRoleIfComplete(member, guildConfig, discordId);
+
+    expect(member.roles.add).not.toHaveBeenCalled();
+    expect(member.roles.cache.has('role-onboarded')).toBe(false);
+  });
 });

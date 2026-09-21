@@ -15,7 +15,13 @@ import { getOrCreateGuildConfig } from '../../repositories/guildConfigRepository
 import { hasPermissionLevel } from '../../permissions/checkPermission.js';
 import { assertMemberVerified, setMemberVerification } from '../../services/verificationService.js';
 import { submitAnswer } from '../../services/onboardingService.js';
-import { assignClass, assertClassChosen } from '../../services/classService.js';
+import {
+  assignClass,
+  assertClassChosen,
+  getConfirmedClassOverview,
+  getCurrentClassName,
+  requestClassHelp,
+} from '../../services/classService.js';
 import {
   assertFachrichtungChosen,
   chooseFachrichtung,
@@ -57,7 +63,15 @@ import {
 } from '../ui/locationMessage.js';
 import { parseFachrichtungCustomId } from '../ui/fachrichtungMessage.js';
 import { RULES_ACCEPT_BUTTON_CUSTOM_ID } from '../ui/rulesMessage.js';
-import { buildClassSelectionMessage, parseClassCustomId } from '../ui/classMessage.js';
+import {
+  CLASS_BACK_CUSTOM_ID,
+  CLASS_HELP_CUSTOM_ID,
+  buildClassConfirmMessage,
+  buildClassHelpRequestedMessage,
+  buildClassSelectionMessage,
+  parseClassConfirmCustomId,
+  parseClassCustomId,
+} from '../ui/classMessage.js';
 import {
   buildCoursePlanOverviewMessage,
   parseCoursePlanAckCustomId,
@@ -171,9 +185,25 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
-  const className = parseClassCustomId(interaction.customId);
-  if (className) {
-    await handleClassSelect(interaction, className);
+  const tentativeClassName = parseClassCustomId(interaction.customId);
+  if (tentativeClassName) {
+    await handleClassTentativeSelect(interaction, tentativeClassName);
+    return;
+  }
+
+  const confirmClassName = parseClassConfirmCustomId(interaction.customId);
+  if (confirmClassName) {
+    await handleClassConfirm(interaction, confirmClassName);
+    return;
+  }
+
+  if (interaction.customId === CLASS_BACK_CUSTOM_ID) {
+    await handleClassBack(interaction);
+    return;
+  }
+
+  if (interaction.customId === CLASS_HELP_CUSTOM_ID) {
+    await handleClassHelpRequest(interaction);
     return;
   }
 
@@ -454,13 +484,66 @@ async function handleAutocomplete(interaction: AutocompleteInteraction): Promise
 }
 
 /**
- * Verarbeitet einen Klick auf einen Klassen-Button. Unterscheidet, ob der
- * Klick von der dauerhaften, oeffentlichen #wo-bin-ich-Kanal-Nachricht kommt
- * (bleibt fuer alle unveraendert, nur eine private Bestaetigung) oder von der
- * persoenlichen, ephemeren /wo-bin-ich-Antwort (darf sicher aktualisiert
- * werden, da sie nur der klickende Nutzer sieht).
+ * Verarbeitet den (noch unverbindlichen) Klick auf eine Klasse in der
+ * Uebersicht. Persistiert NICHTS - zeigt entweder direkt den bereits
+ * bekannten Status (schon zugeordnet) oder den Bestaetigungs-Screen
+ * (buildClassConfirmMessage()). Unterscheidet wie zuvor, ob der Klick von
+ * der dauerhaften, oeffentlichen #wo-bin-ich-Kanal-Nachricht kommt (dann
+ * eine neue private Antwort) oder von einer bereits ephemeren Nachricht
+ * (dann sicher per interaction.update() ersetzbar, da nur der klickende
+ * Nutzer sie sieht).
  */
-async function handleClassSelect(
+async function handleClassTentativeSelect(
+  interaction: ButtonInteraction,
+  className: ClassName,
+): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    const currentClassName = await getCurrentClassName(member.guild.id, member.id);
+
+    if (currentClassName) {
+      const content =
+        currentClassName === className
+          ? `Du bist bereits in ${CLASS_NAME_LABELS[currentClassName]}.`
+          : `Deine Klasse ist bereits auf ${CLASS_NAME_LABELS[currentClassName]} festgelegt und ` +
+            'kann nicht selbst gewechselt werden. Bitte wende dich an deine Klassenleitung ' +
+            'oder die Verwaltung.';
+
+      if (interaction.message.flags.has(MessageFlags.Ephemeral)) {
+        await interaction.update({ content, embeds: [], components: [] });
+      } else {
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+      }
+      return;
+    }
+
+    const overview = await getConfirmedClassOverview(guildConfig.id);
+    const { embeds, components } = buildClassConfirmMessage(className, overview[className]);
+
+    if (interaction.message.flags.has(MessageFlags.Ephemeral)) {
+      await interaction.update({ embeds, components });
+    } else {
+      await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
+    }
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/**
+ * Verarbeitet die ausdrueckliche Bestaetigung ("Ja, das ist meine Klasse") -
+ * erst hier wird tatsaechlich assignClass() aufgerufen und damit die
+ * Zuordnung persistiert. Der Bestaetigungs-Screen ist immer eine ephemere
+ * Nachricht (siehe handleClassTentativeSelect()), daher hier immer sicher
+ * per interaction.update() aktualisierbar.
+ */
+async function handleClassConfirm(
   interaction: ButtonInteraction,
   className: ClassName,
 ): Promise<void> {
@@ -475,38 +558,69 @@ async function handleClassSelect(
     const result = await assignClass(member, guildConfig, className, member.id);
 
     const content = result.changed
-      ? result.previousClassName
-        ? `Du wurdest von ${CLASS_NAME_LABELS[result.previousClassName]} zu ` +
-          `${CLASS_NAME_LABELS[result.newClassName]} verschoben. 🎉`
-        : `Du bist jetzt in ${CLASS_NAME_LABELS[result.newClassName]}! 🎉`
+      ? `Du bist jetzt in ${CLASS_NAME_LABELS[result.newClassName]}! 🎉`
       : `Du bist bereits in ${CLASS_NAME_LABELS[result.newClassName]}.`;
 
-    // Nur beim allerersten (mandatorischen) Setzen der Klasse direkt mit dem naechsten
-    // Eintrittsflow-Schritt verketten - ein Wechsel durch die Verwaltung (kommt hier
-    // nie vor, siehe assignClass()-Sperre) oder ein erneuter Klick auf die bereits
-    // zugewiesene Klasse soll den Flow nicht nochmal anstossen.
-    const nextPart =
-      result.changed && !result.previousClassName
-        ? await buildSafeNextStepReplyPart(member.guild.id, member.id)
-        : null;
+    const nextPart = result.changed
+      ? await buildSafeNextStepReplyPart(member.guild.id, member.id)
+      : null;
     const fullContent = [content, nextPart?.content].filter(Boolean).join('\n\n');
 
+    await interaction.update({
+      content: fullContent,
+      embeds: nextPart?.embeds ?? [],
+      components: nextPart?.components ?? [],
+    });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/**
+ * "Zurueck zur Klassenauswahl" auf dem Bestaetigungs-Screen - verwirft die
+ * (nie persistierte) Auswahl und zeigt wieder die volle Uebersicht.
+ */
+async function handleClassBack(interaction: ButtonInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    const currentClassName = await getCurrentClassName(member.guild.id, member.id);
+    const overview = await getConfirmedClassOverview(guildConfig.id);
+    const { embeds, components } = buildClassSelectionMessage(overview, currentClassName);
+
+    await interaction.update({ content: null, embeds, components });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/**
+ * "Klasse nicht erkannt / Hilfe" - meldet die Anfrage (siehe
+ * classService.requestClassHelp()), ohne dass dabei irgendeine
+ * Klassenzuordnung erzwungen wird.
+ */
+async function handleClassHelpRequest(interaction: ButtonInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    await requestClassHelp(guildConfig, member, member.id);
+
+    const { embeds, components } = buildClassHelpRequestedMessage();
+
     if (interaction.message.flags.has(MessageFlags.Ephemeral)) {
-      const { embeds, components } = buildClassSelectionMessage(result.newClassName);
-      await interaction.update({ embeds, components });
-      await interaction.followUp({
-        content: fullContent,
-        embeds: nextPart?.embeds ?? [],
-        components: nextPart?.components ?? [],
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.update({ content: null, embeds, components });
     } else {
-      await interaction.reply({
-        content: fullContent,
-        embeds: nextPart?.embeds ?? [],
-        components: nextPart?.components ?? [],
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
     }
   } catch (error) {
     await handleInteractionError(interaction, error);

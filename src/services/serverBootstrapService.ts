@@ -17,6 +17,7 @@ import {
 } from '../repositories/guildConfigRepository.js';
 import { getClassByName, updateClassRole } from '../repositories/classRepository.js';
 import { configureAdminRoles } from './guildConfigService.js';
+import { getConfirmedClassOverview } from './classService.js';
 import { setupClassArea, type ClassAreaSetupResult } from './classAreaService.js';
 import { logAuditEvent } from '../repositories/auditLogRepository.js';
 import { buildVerificationPrompt, VERIFY_BUTTON_CUSTOM_ID } from '../bot/ui/verificationMessage.js';
@@ -246,7 +247,7 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     guild,
     null,
     SCHULHOF_CHANNEL_NAME,
-    buildSchulhofChannelOverwrites(guild, onboardedRole.role.id, adminRole.role.id, botRoleId),
+    buildSchulhofChannelOverwrites(guild, verifiedRole.role.id, adminRole.role.id, botRoleId),
     SCHULHOF_CHANNEL_TOPIC,
     0,
   );
@@ -311,10 +312,11 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     (customId) => customId === VERIFY_BUTTON_CUSTOM_ID,
     () => buildVerificationPrompt(),
   );
+  const classOverview = await getConfirmedClassOverview(guild.id);
   const whereAmIMessagePosted = await ensureBotMessage(
     whereAmIChannel.channel,
     (customId) => customId.startsWith(CLASS_SELECT_CUSTOM_ID_PREFIX),
-    () => buildClassSelectionMessage(null),
+    () => buildClassSelectionMessage(classOverview, null),
   );
 
   // --- 7. Abschliessende Konsistenzpruefung. ---
@@ -534,21 +536,25 @@ function buildLogChannelOverwrites(
 }
 
 /**
- * @everyone verliert Sichtbarkeit; die "Mitglied"-Rolle (onboardedRoleId) darf
- * lesen UND schreiben - bewusst ohne Einschraenkung (kein readOnly), da der
- * Schulhof laut Anforderung ein freier, unmoderierter Talk-Kanal fuer ALLE
- * vollstaendig onboardeten Mitglieder ist, unabhaengig von ihrer Klasse.
+ * @everyone verliert Sichtbarkeit; die "Verifiziert"-Rolle (verifiedRoleId) -
+ * bewusst NICHT die erst nach dem GESAMTEN Eintrittsflow vergebene "Mitglied"-
+ * Rolle (onboardedRoleId) - darf lesen UND schreiben, ohne Einschraenkung
+ * (kein readOnly). Der Schulhof ist laut Anforderung der zentrale, freie,
+ * unmoderierte Talk-Kanal fuer ALLE bereits verifizierten Mitglieder,
+ * unabhaengig davon, ob ihre Klassenzugehoerigkeit schon geklaert ist -
+ * gerade WAEHREND die Klasse noch ungeklaert ist, soll der Schulhof der
+ * einzige zugaengliche Bereich bleiben (siehe classService.ts).
  */
 function buildSchulhofChannelOverwrites(
   guild: Guild,
-  onboardedRoleId: string,
+  verifiedRoleId: string,
   adminRoleId: string,
   botRoleId: string | undefined,
 ): OverwriteResolvable[] {
   const overwrites: OverwriteResolvable[] = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     {
-      id: onboardedRoleId,
+      id: verifiedRoleId,
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.ReadMessageHistory,

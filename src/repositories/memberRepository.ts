@@ -45,6 +45,30 @@ export async function getMemberWithClass(
 }
 
 /**
+ * Setzt `classId` ATOMAR nur, wenn es aktuell `null` ist (Compare-and-Swap
+ * ueber die SQL-WHERE-Klausel, nicht per Read-then-Write) - schliesst die
+ * Race Condition zwischen zwei gleichzeitigen ERST-Bestaetigungen desselben,
+ * noch keiner Klasse zugeordneten Mitglieds (z. B. Doppelklick oder zwei
+ * offene Tabs). Gibt `true` zurueck, wenn DIESER Aufruf die Zuordnung
+ * gesetzt hat, `false`, wenn ein anderer, gleichzeitiger Aufruf schneller
+ * war (dessen `classId` dann bereits gilt). Nur fuer die Erstzuweisung
+ * gedacht - ein spaeterer Wechsel (Admin-Override) laeuft weiterhin ueber
+ * setMemberClass(), da dort per Definition kein `classId: null`-Zustand mehr
+ * vorliegt, gegen den atomar verglichen werden koennte.
+ */
+export async function claimFirstClassAssignment(
+  guildId: string,
+  discordId: string,
+  classId: string,
+): Promise<boolean> {
+  const result = await prisma.member.updateMany({
+    where: { guildId, discordId, classId: null },
+    data: { classId },
+  });
+  return result.count > 0;
+}
+
+/**
  * Setzt (oder loescht mit `null`) die Klassenzuordnung eines Mitglieds. Ein
  * Mitglied kann laut Datenmodell (`Member.classId`, einzelnes Feld statt
  * Liste) immer nur einer Klasse gleichzeitig angehoeren.

@@ -1,7 +1,7 @@
 import { MessageFlags, SlashCommandBuilder, type GuildMember } from 'discord.js';
 import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
-import { getCurrentClassName } from '../../../services/classService.js';
+import { getConfirmedClassOverview, getCurrentClassName } from '../../../services/classService.js';
 import { buildClassSelectionMessage } from '../../ui/classMessage.js';
 
 const command: Command = {
@@ -16,7 +16,8 @@ const command: Command = {
     // getCurrentClassName wirft PermissionError, wenn das Mitglied noch nicht
     // verifiziert ist - wird zentral von interactionCreate abgefangen.
     const currentClassName = await getCurrentClassName(interaction.guild.id, member.id);
-    const { embeds, components } = buildClassSelectionMessage(currentClassName);
+    const overview = await getConfirmedClassOverview(interaction.guild.id);
+    const { embeds, components } = buildClassSelectionMessage(overview, currentClassName);
 
     await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
   },

@@ -12,6 +12,7 @@ import { buildProfileDetailsPromptMessage } from './ui/profileMessage.js';
 import { buildLocationPromptMessage } from './ui/locationMessage.js';
 import { buildFachrichtungMessage } from './ui/fachrichtungMessage.js';
 import { buildClassSelectionMessage } from './ui/classMessage.js';
+import { getConfirmedClassOverview } from '../services/classService.js';
 import { buildRulesMessage } from './ui/rulesMessage.js';
 import { createChildLogger } from '../utils/logger.js';
 
@@ -53,8 +54,10 @@ export async function buildSafeNextStepReplyPart(
         return buildLocationPromptMessage();
       case 'NEEDS_FACHRICHTUNG':
         return buildFachrichtungMessage();
-      case 'NEEDS_CLASS':
-        return buildClassSelectionMessage(null);
+      case 'NEEDS_CLASS': {
+        const overview = await getConfirmedClassOverview(guildId);
+        return buildClassSelectionMessage(overview, null);
+      }
       case 'NEEDS_ONBOARDING': {
         const state = await getOnboardingState(guildId, discordId);
         return buildOnboardingMessageForState(state);

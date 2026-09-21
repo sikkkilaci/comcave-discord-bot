@@ -7,6 +7,7 @@ import { logAuditEvent } from '../../../repositories/auditLogRepository.js';
 import { ValidationError } from '../../../utils/errors.js';
 import { CLASS_NAME_LABELS } from '../../../types/domain.js';
 import { buildClassSelectionMessage } from '../../ui/classMessage.js';
+import { getConfirmedClassOverview } from '../../../services/classService.js';
 import { roleHasAdministrator } from '../../discordHelpers.js';
 
 const command: Command = {
@@ -78,8 +79,9 @@ const command: Command = {
       },
     });
 
+    const overview = await getConfirmedClassOverview(interaction.guild.id);
     try {
-      await channel.send(buildClassSelectionMessage(null));
+      await channel.send(buildClassSelectionMessage(overview, null));
     } catch {
       throw new ValidationError(
         `Die Konfiguration wurde gespeichert, aber ich konnte keine Nachricht in ${channel} senden. ` +
