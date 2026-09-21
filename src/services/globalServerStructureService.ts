@@ -250,5 +250,16 @@ function buildOverwrites(
     });
   }
 
+  const staffPermissions = [
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.ReadMessageHistory,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.EmbedLinks,
+    PermissionFlagsBits.AttachFiles,
+  ];
+
+  overwrites.push({ id: adminRoleId, allow: staffPermissions });
+  overwrites.push({ id: moderatorRoleId, allow: staffPermissions });
+
   return overwrites;
 }
