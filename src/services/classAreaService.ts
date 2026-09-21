@@ -335,6 +335,22 @@ function buildOverwrites(
     });
   }
 
+  if (guildConfig.moderatorRoleId) {
+    overwrites.push({
+      id: guildConfig.moderatorRoleId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.Connect,
+        PermissionFlagsBits.Speak,
+        PermissionFlagsBits.MuteMembers,
+        PermissionFlagsBits.DeafenMembers,
+        PermissionFlagsBits.MoveMembers,
+      ],
+    });
+  }
+
   if (klasse.leadRoleId) {
     overwrites.push({ id: klasse.leadRoleId, allow: CLASS_LEAD_CHANNEL_PERMISSIONS });
   }
