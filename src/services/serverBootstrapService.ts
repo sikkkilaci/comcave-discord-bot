@@ -28,6 +28,7 @@ import { roleHasAdministrator } from '../bot/discordHelpers.js';
 import { ValidationError } from '../utils/errors.js';
 import { CLASS_NAMES, type ClassName } from '../types/domain.js';
 import { createChildLogger } from '../utils/logger.js';
+import { ensureGlobalServerStructure, type GlobalServerStructureResult } from './globalServerStructureService.js';
 
 const logger = createChildLogger('serverBootstrapService');
 
@@ -82,6 +83,7 @@ export interface BootstrapResult {
   verificationChannel: BootstrapObjectSummary;
   whereAmIChannel: BootstrapObjectSummary;
   logChannel: BootstrapObjectSummary;
+  globalStructure: GlobalServerStructureResult;
   classes: Record<ClassName, BootstrapClassSummary>;
   verificationMessagePosted: boolean;
   whereAmIMessagePosted: boolean;
@@ -224,8 +226,15 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     logChannelId: logChannel.channel.id,
   });
 
-  // --- 4. Klassenkonfiguration + private Klassenbereiche (bestehender classAreaService). ---
+  // --- 4. Globale COMCAVE-Plattformstruktur. ---
   const refreshedGuildConfig = await getOrCreateGuildConfig(guild.id);
+  const globalStructure = await ensureGlobalServerStructure(guild, refreshedGuildConfig, {
+    [VERIFICATION_CHANNEL_NAME]: verificationChannel.channel.id,
+    [WHERE_AM_I_CHANNEL_NAME]: whereAmIChannel.channel.id,
+    [LOG_CHANNEL_NAME]: logChannel.channel.id,
+  });
+
+  // --- 5. Klassenkonfiguration + private Klassenbereiche (bestehender classAreaService). ---
   const classes = {} as Record<ClassName, BootstrapClassSummary>;
   for (const [name, ensured] of classRoleEntries) {
     const klasse = await updateClassRole(guild.id, name, ensured.role.id);
@@ -247,13 +256,15 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
       verificationChannelCreated: verificationChannel.created,
       whereAmIChannelCreated: whereAmIChannel.created,
       logChannelCreated: logChannel.created,
+      globalCategoriesCreated: globalStructure.categoriesCreated,
+      globalChannelsCreated: globalStructure.channelsCreated,
       classRolesCreated: Object.fromEntries(
         classRoleEntries.map(([name, ensured]) => [name, ensured.created]),
       ),
     },
   });
 
-  // --- 5. Verifizierung + #wo-bin-ich: dauerhafte Nachrichten (nur, wenn noch keine vorhanden). ---
+  // --- 6. Verifizierung + #wo-bin-ich: dauerhafte Nachrichten (nur, wenn noch keine vorhanden). ---
   const verificationMessagePosted = await ensureBotMessage(
     verificationChannel.channel,
     (customId) => customId === VERIFY_BUTTON_CUSTOM_ID,
@@ -265,7 +276,7 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     () => buildClassSelectionMessage(null),
   );
 
-  // --- 6. Abschliessende Konsistenzpruefung. ---
+  // --- 7. Abschliessende Konsistenzpruefung. ---
   warnings.push(...(await checkConsistency(guild.id)));
 
   logger.info(
@@ -288,6 +299,7 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
       whereAmIChannel.created,
     ),
     logChannel: summary(LOG_CHANNEL_NAME, logChannel.channel.id, logChannel.created),
+    globalStructure,
     classes,
     verificationMessagePosted,
     whereAmIMessagePosted,
