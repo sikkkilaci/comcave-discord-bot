@@ -1,7 +1,10 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
-import { bootstrapServer, type BootstrapResult } from '../../../services/serverBootstrapService.js';
+import {
+  bootstrapServer,
+  type BootstrapResult,
+} from '../../../services/serverBootstrapService.js';
 import { CLASS_NAMES } from '../../../types/domain.js';
 
 function formatObject(label: string, obj: { id: string; created: boolean }): string {
@@ -29,7 +32,9 @@ function formatResult(result: BootstrapResult): string {
   lines.push('**Globale Plattformstruktur**');
   lines.push(`- Kategorien neu: ${result.globalStructure.categoriesCreated.length}`);
   lines.push(`- Kanäle neu: ${result.globalStructure.channelsCreated.length}`);
-  lines.push(`- Kanäle wiederverwendet/verschoben: ${result.globalStructure.channelsReused.length}`);
+  lines.push(
+    `- Kanäle wiederverwendet/verschoben: ${result.globalStructure.channelsReused.length}`,
+  );
 
   lines.push('');
   lines.push('**Private Klassenbereiche**');
