@@ -467,6 +467,15 @@ async function createChannelOrThrow(
     return await guild.channels.create(options);
   } catch (error) {
     if (error instanceof DiscordAPIError && error.code === DISCORD_MISSING_PERMISSIONS) {
+      // Die urspruengliche DiscordAPIError (inkl. rawError/requestBody) wird hier bewusst
+      // NICHT weitergeworfen, da sie fuer Nutzer unverstaendlich waere - fuer die Diagnose
+      // eines konkreten Falls (z. B. welches Overwrite/welcher Kanaltyp genau abgelehnt wurde)
+      // aber unverzichtbar, deshalb hier vollstaendig geloggt statt verworfen.
+      logger.error(
+        { channelName: options.name, channelType: options.type, err: error },
+        'Kanal-Anlage von Discord mit 50013 (Missing Permissions) abgelehnt, obwohl die ' +
+          'Vorab-Pruefung (assertBotCanApplyOverwrites) keine fehlende Berechtigung fand.',
+      );
       throw new ValidationError(
         'Mir fehlt eine Berechtigung, um diesen Kanal anzulegen (z. B. "Kanaele verwalten" oder ' +
           'eine per Overwrite vergebene Berechtigung). Bitte pruefe meine Server-Berechtigungen.',
