@@ -16,8 +16,9 @@ Standort-Katalog (`ComcaveLocation`), analog zur Kursplan-Quelldatei unter
   seiten unter `comcave.de/standorte/<ort>` und deren Textausschnitte)
   ausgewertet wurden - **keine** Daten von Google Maps, Wikipedia,
   Branchenverzeichnissen oder anderen Drittquellen.
-- **Stand der Datei:** 2026-09-21.
-- **Abdeckung:** Diese Datei enthaelt **110 verifizierte Standorte** (Stadt +
+- **Stand der Datei:** 2026-09-21 (zweite Erhebungsrunde, siehe "Warum nicht
+  alle 300+ Standorte?" unten).
+- **Abdeckung:** Diese Datei enthaelt **226 verifizierte Standorte** (Stadt +
   Bundesland, teils PLZ) - einen ehrlich belegten Teilbestand der insgesamt
   ueber 300 offiziellen COMCAVE-Standorte, **keine** erschoepfende Liste.
   Eine vollstaendige Erfassung aller 300+ Standorte erfordert direkten Zugriff
@@ -29,12 +30,56 @@ Standort-Katalog (`ComcaveLocation`), analog zur Kursplan-Quelldatei unter
   `state` (Bundesland) sicher belegt, da beide entweder woertlich aus einer
   domain-beschraenkten Trefferzusammenfassung stammen oder (bei eindeutiger,
   unstrittiger deutscher Verwaltungsgeographie eines von COMCAVE bestaetigten
-  Ortsnamens) daraus zwingend folgen. `postalCode` ist nur bei **9 von 110**
+  Ortsnamens) daraus zwingend folgen. `postalCode` ist nur bei **8 von 226**
   Standorten gesetzt - ausschliesslich dort, wo die PLZ explizit in einer
   solchen Trefferzusammenfassung genannt wurde. Fuer alle anderen Standorte
   wurde das Feld bewusst weggelassen statt geraten. Adressen (Strasse/Hausnr.)
   wurden nicht mit ausreichender Sicherheit ermittelt und sind daher in dieser
-  Datei generell nicht enthalten.
+  Datei generell nicht enthalten. Fuer Berlin und Bremen wurde eine zunaechst
+  gesetzte PLZ in der zweiten Erhebungsrunde wieder entfernt, siehe unten.
+
+### Warum nicht alle 300+ Standorte?
+
+Ein direkter Abruf von `www.comcave.de` (auch `robots.txt`/`sitemap.xml`) ist
+in dieser Entwicklungsumgebung durch eine Netzwerk-Egress-Restriktion
+vollstaendig blockiert (bestaetigt kein Proxy-Fehler, sondern eine bewusste
+Sperre). Die einzige verfuegbare Methode ist eine auf `comcave.de`/
+`www.comcave.de` beschraenkte Websuche, die nicht wie ein klassischer
+Sitemap-Crawler jede Unterseite liefert, sondern nur das, was fuer eine
+konkrete Suchanfrage indexiert/zusammengefasst wird. In der ersten
+Erhebungsrunde wurden vor allem einzelne Staedte-Suchanfragen gestellt, was
+nur 110 Standorte ergab. In einer zweiten Runde wurde zusaetzlich gezielt
+nach den offiziellen Bundesland-Sammelseiten (`comcave.de/standorte/
+<bundesland>`, z. B. `.../nordrhein-westfalen`) gesucht und jede darin
+genannte Stadt einzeln ueber eine eigene Suchanfrage bestaetigt (d. h. nur
+uebernommen, wenn dabei eine echte, indexierte `comcave.de/standorte/<slug>`-
+Seite als Treffer zurueckkam) - das brachte die Abdeckung auf 226. Bei diesem
+zweiten Durchlauf sind zwei Fehler in unbestaetigten KI-generierten
+Fliesstext-Zusammenfassungen aufgefallen, die deshalb NICHT uebernommen
+wurden: ein Standort "Salzgitter" wurde faelschlich unter Baden-Württemberg
+aufgefuehrt (Salzgitter liegt tatsaechlich in Niedersachsen - dort per
+eigener Suchanfrage bestaetigt und entsprechend einsortiert), und ein Eintrag
+"Monschau am Rhein" duerfte eine Verwechslung/Vermischung mit dem
+benachbarten echten Eintrag "Monheim am Rhein" sein. Aus diesem Grund gilt
+fuer diese Datei die Regel: **eine Stadt wird nur uebernommen, wenn eine
+eigene Suchanfrage dafuer eine echte `comcave.de/standorte/<slug>`-Seite als
+Treffer liefert** - eine reine Erwaehnung in einer Fliesstext-Zusammenfassung
+reicht nicht. Mehrere so gepruefte Kandidaten (u. a. Wuppertal-Nachbarorte
+wie Marl beim ersten Versuch, Erlangen, Schweinfurt, Weiden, Straubing,
+Fulda, Ruesselsheim, Bautzen, Freiberg, Riesa, Trier, Speyer, Worms,
+Ravensburg, Boeblingen, Rottweil) lieferten **keinen** bestaetigten Treffer
+und wurden deshalb bewusst NICHT aufgenommen, auch wenn COMCAVE dort
+moeglicherweise ebenfalls vertreten ist. Aus demselben Grund wurde bei
+Berlin und Bremen die urspruenglich gesetzte PLZ wieder entfernt: beide
+Staedte haben nachweislich mehrere COMCAVE-Zweigstellen mit unterschiedlichen
+Adressen/PLZ, sodass keine einzelne PLZ eindeutig "der" Standort Berlin/
+Bremen waere. Eine vollstaendige Abdeckung aller 300+ Standorte ist mit
+dieser Suchmethode praktisch nicht erreichbar, da nicht jede Kombination aus
+Bundesland und Ort im Voraus bekannt/erraten werden kann; sie erfordert
+echten Lesezugriff auf `https://www.comcave.de/standorte` (z. B. durch die
+Administration ausserhalb dieser Egress-Restriktion) oder eine offizielle
+COMCAVE-Standort-Exportdatei/-API.
+
 - **Keine Teilnehmerdaten:** Diese Datei enthaelt ausschliesslich
   Standort-Stammdaten (Ort/Bundesland/PLZ), keine Personen- oder
   Teilnehmerdaten.

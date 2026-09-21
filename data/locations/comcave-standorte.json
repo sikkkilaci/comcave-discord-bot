@@ -102,16 +102,52 @@
     "city": "Leonberg"
   },
   {
+    "code": "ludwigsburg",
+    "name": "COMCAVE Ludwigsburg",
+    "state": "Baden-Württemberg",
+    "city": "Ludwigsburg"
+  },
+  {
     "code": "mannheim",
     "name": "COMCAVE Mannheim",
     "state": "Baden-Württemberg",
     "city": "Mannheim"
   },
   {
+    "code": "offenburg",
+    "name": "COMCAVE Offenburg",
+    "state": "Baden-Württemberg",
+    "city": "Offenburg"
+  },
+  {
+    "code": "pforzheim",
+    "name": "COMCAVE Pforzheim",
+    "state": "Baden-Württemberg",
+    "city": "Pforzheim"
+  },
+  {
+    "code": "radolfzell",
+    "name": "COMCAVE Radolfzell am Bodensee",
+    "state": "Baden-Württemberg",
+    "city": "Radolfzell am Bodensee"
+  },
+  {
+    "code": "rastatt",
+    "name": "COMCAVE Rastatt",
+    "state": "Baden-Württemberg",
+    "city": "Rastatt"
+  },
+  {
     "code": "reutlingen",
     "name": "COMCAVE Reutlingen",
     "state": "Baden-Württemberg",
     "city": "Reutlingen"
+  },
+  {
+    "code": "schwaebisch-gmuend",
+    "name": "COMCAVE Schwäbisch Gmünd",
+    "state": "Baden-Württemberg",
+    "city": "Schwäbisch Gmünd"
   },
   {
     "code": "sindelfingen",
@@ -124,6 +160,48 @@
     "name": "COMCAVE Stuttgart",
     "state": "Baden-Württemberg",
     "city": "Stuttgart"
+  },
+  {
+    "code": "tuebingen",
+    "name": "COMCAVE Tübingen",
+    "state": "Baden-Württemberg",
+    "city": "Tübingen"
+  },
+  {
+    "code": "tuttlingen",
+    "name": "COMCAVE Tuttlingen",
+    "state": "Baden-Württemberg",
+    "city": "Tuttlingen"
+  },
+  {
+    "code": "ulm",
+    "name": "COMCAVE Ulm",
+    "state": "Baden-Württemberg",
+    "city": "Ulm"
+  },
+  {
+    "code": "villingen-schwenningen",
+    "name": "COMCAVE Villingen-Schwenningen",
+    "state": "Baden-Württemberg",
+    "city": "Villingen-Schwenningen"
+  },
+  {
+    "code": "waiblingen",
+    "name": "COMCAVE Waiblingen",
+    "state": "Baden-Württemberg",
+    "city": "Waiblingen"
+  },
+  {
+    "code": "winnenden",
+    "name": "COMCAVE Winnenden",
+    "state": "Baden-Württemberg",
+    "city": "Winnenden"
+  },
+  {
+    "code": "amberg",
+    "name": "COMCAVE Amberg",
+    "state": "Bayern",
+    "city": "Amberg"
   },
   {
     "code": "aschaffenburg",
@@ -139,6 +217,12 @@
     "city": "Augsburg"
   },
   {
+    "code": "bamberg",
+    "name": "COMCAVE Bamberg",
+    "state": "Bayern",
+    "city": "Bamberg"
+  },
+  {
     "code": "bayreuth",
     "name": "COMCAVE Bayreuth",
     "state": "Bayern",
@@ -146,10 +230,76 @@
     "postalCode": "95444"
   },
   {
+    "code": "fuerth",
+    "name": "COMCAVE Fürth",
+    "state": "Bayern",
+    "city": "Fürth"
+  },
+  {
+    "code": "hof",
+    "name": "COMCAVE Hof",
+    "state": "Bayern",
+    "city": "Hof"
+  },
+  {
+    "code": "ingolstadt",
+    "name": "COMCAVE Ingolstadt",
+    "state": "Bayern",
+    "city": "Ingolstadt"
+  },
+  {
+    "code": "kempten",
+    "name": "COMCAVE Kempten",
+    "state": "Bayern",
+    "city": "Kempten"
+  },
+  {
+    "code": "kulmbach",
+    "name": "COMCAVE Kulmbach",
+    "state": "Bayern",
+    "city": "Kulmbach"
+  },
+  {
+    "code": "landshut",
+    "name": "COMCAVE Landshut",
+    "state": "Bayern",
+    "city": "Landshut"
+  },
+  {
+    "code": "memmingen",
+    "name": "COMCAVE Memmingen",
+    "state": "Bayern",
+    "city": "Memmingen"
+  },
+  {
     "code": "muenchen",
     "name": "COMCAVE München",
     "state": "Bayern",
     "city": "München"
+  },
+  {
+    "code": "nuernberg",
+    "name": "COMCAVE Nürnberg",
+    "state": "Bayern",
+    "city": "Nürnberg"
+  },
+  {
+    "code": "passau",
+    "name": "COMCAVE Passau",
+    "state": "Bayern",
+    "city": "Passau"
+  },
+  {
+    "code": "regensburg",
+    "name": "COMCAVE Regensburg",
+    "state": "Bayern",
+    "city": "Regensburg"
+  },
+  {
+    "code": "rosenheim",
+    "name": "COMCAVE Rosenheim",
+    "state": "Bayern",
+    "city": "Rosenheim"
   },
   {
     "code": "wuerzburg",
@@ -161,8 +311,7 @@
     "code": "berlin",
     "name": "COMCAVE Berlin",
     "state": "Berlin",
-    "city": "Berlin",
-    "postalCode": "10967"
+    "city": "Berlin"
   },
   {
     "code": "brandenburg-an-der-havel",
@@ -235,8 +384,7 @@
     "code": "bremen",
     "name": "COMCAVE Bremen",
     "state": "Bremen",
-    "city": "Bremen",
-    "postalCode": "28309"
+    "city": "Bremen"
   },
   {
     "code": "bremerhaven",
@@ -251,6 +399,24 @@
     "city": "Hamburg"
   },
   {
+    "code": "bad-homburg",
+    "name": "COMCAVE Bad Homburg",
+    "state": "Hessen",
+    "city": "Bad Homburg"
+  },
+  {
+    "code": "bensheim",
+    "name": "COMCAVE Bensheim",
+    "state": "Hessen",
+    "city": "Bensheim"
+  },
+  {
+    "code": "darmstadt",
+    "name": "COMCAVE Darmstadt",
+    "state": "Hessen",
+    "city": "Darmstadt"
+  },
+  {
     "code": "frankfurt-am-main",
     "name": "COMCAVE Frankfurt am Main",
     "state": "Hessen",
@@ -263,10 +429,28 @@
     "city": "Gießen"
   },
   {
+    "code": "hanau",
+    "name": "COMCAVE Hanau",
+    "state": "Hessen",
+    "city": "Hanau"
+  },
+  {
     "code": "kassel",
     "name": "COMCAVE Kassel",
     "state": "Hessen",
     "city": "Kassel"
+  },
+  {
+    "code": "limburg",
+    "name": "COMCAVE Limburg an der Lahn",
+    "state": "Hessen",
+    "city": "Limburg an der Lahn"
+  },
+  {
+    "code": "marburg",
+    "name": "COMCAVE Marburg",
+    "state": "Hessen",
+    "city": "Marburg"
   },
   {
     "code": "offenbach-am-main",
@@ -291,6 +475,12 @@
     "name": "COMCAVE Greifswald",
     "state": "Mecklenburg-Vorpommern",
     "city": "Greifswald"
+  },
+  {
+    "code": "rostock",
+    "name": "COMCAVE Rostock",
+    "state": "Mecklenburg-Vorpommern",
+    "city": "Rostock"
   },
   {
     "code": "schwerin",
@@ -331,6 +521,24 @@
     "postalCode": "29221"
   },
   {
+    "code": "cuxhaven",
+    "name": "COMCAVE Cuxhaven",
+    "state": "Niedersachsen",
+    "city": "Cuxhaven"
+  },
+  {
+    "code": "delmenhorst",
+    "name": "COMCAVE Delmenhorst",
+    "state": "Niedersachsen",
+    "city": "Delmenhorst"
+  },
+  {
+    "code": "garbsen",
+    "name": "COMCAVE Garbsen",
+    "state": "Niedersachsen",
+    "city": "Garbsen"
+  },
+  {
     "code": "goettingen",
     "name": "COMCAVE Göttingen",
     "state": "Niedersachsen",
@@ -341,6 +549,12 @@
     "name": "COMCAVE Hannover",
     "state": "Niedersachsen",
     "city": "Hannover"
+  },
+  {
+    "code": "hildesheim",
+    "name": "COMCAVE Hildesheim",
+    "state": "Niedersachsen",
+    "city": "Hildesheim"
   },
   {
     "code": "lueneburg",
@@ -361,11 +575,107 @@
     "city": "Osnabrück"
   },
   {
+    "code": "peine",
+    "name": "COMCAVE Peine",
+    "state": "Niedersachsen",
+    "city": "Peine"
+  },
+  {
+    "code": "salzgitter",
+    "name": "COMCAVE Salzgitter",
+    "state": "Niedersachsen",
+    "city": "Salzgitter"
+  },
+  {
+    "code": "stade",
+    "name": "COMCAVE Stade",
+    "state": "Niedersachsen",
+    "city": "Stade"
+  },
+  {
+    "code": "wilhelmshaven",
+    "name": "COMCAVE Wilhelmshaven",
+    "state": "Niedersachsen",
+    "city": "Wilhelmshaven"
+  },
+  {
+    "code": "wolfenbuettel",
+    "name": "COMCAVE Wolfenbüttel",
+    "state": "Niedersachsen",
+    "city": "Wolfenbüttel"
+  },
+  {
     "code": "wolfsburg",
     "name": "COMCAVE Wolfsburg",
     "state": "Niedersachsen",
     "city": "Wolfsburg",
     "postalCode": "38440"
+  },
+  {
+    "code": "aachen",
+    "name": "COMCAVE Aachen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Aachen"
+  },
+  {
+    "code": "ahlen",
+    "name": "COMCAVE Ahlen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Ahlen"
+  },
+  {
+    "code": "alsdorf",
+    "name": "COMCAVE Alsdorf",
+    "state": "Nordrhein-Westfalen",
+    "city": "Alsdorf"
+  },
+  {
+    "code": "arnsberg",
+    "name": "COMCAVE Arnsberg",
+    "state": "Nordrhein-Westfalen",
+    "city": "Arnsberg"
+  },
+  {
+    "code": "bad-salzuflen",
+    "name": "COMCAVE Bad Salzuflen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bad Salzuflen"
+  },
+  {
+    "code": "bedburg",
+    "name": "COMCAVE Bedburg",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bedburg"
+  },
+  {
+    "code": "bergheim",
+    "name": "COMCAVE Bergheim",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bergheim"
+  },
+  {
+    "code": "bergisch-gladbach",
+    "name": "COMCAVE Bergisch Gladbach",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bergisch Gladbach"
+  },
+  {
+    "code": "bielefeld",
+    "name": "COMCAVE Bielefeld",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bielefeld"
+  },
+  {
+    "code": "bocholt",
+    "name": "COMCAVE Bocholt",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bocholt"
+  },
+  {
+    "code": "bochum",
+    "name": "COMCAVE Bochum",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bochum"
   },
   {
     "code": "bonn",
@@ -374,10 +684,40 @@
     "city": "Bonn"
   },
   {
+    "code": "bornheim",
+    "name": "COMCAVE Bornheim",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bornheim"
+  },
+  {
+    "code": "bottrop",
+    "name": "COMCAVE Bottrop",
+    "state": "Nordrhein-Westfalen",
+    "city": "Bottrop"
+  },
+  {
     "code": "buende",
     "name": "COMCAVE Bünde",
     "state": "Nordrhein-Westfalen",
     "city": "Bünde"
+  },
+  {
+    "code": "castrop-rauxel",
+    "name": "COMCAVE Castrop-Rauxel",
+    "state": "Nordrhein-Westfalen",
+    "city": "Castrop-Rauxel"
+  },
+  {
+    "code": "detmold",
+    "name": "COMCAVE Detmold",
+    "state": "Nordrhein-Westfalen",
+    "city": "Detmold"
+  },
+  {
+    "code": "dorsten",
+    "name": "COMCAVE Dorsten",
+    "state": "Nordrhein-Westfalen",
+    "city": "Dorsten"
   },
   {
     "code": "dortmund",
@@ -387,16 +727,298 @@
     "postalCode": "44227"
   },
   {
+    "code": "duisburg",
+    "name": "COMCAVE Duisburg",
+    "state": "Nordrhein-Westfalen",
+    "city": "Duisburg"
+  },
+  {
+    "code": "duelmen",
+    "name": "COMCAVE Dülmen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Dülmen"
+  },
+  {
+    "code": "dueren",
+    "name": "COMCAVE Düren",
+    "state": "Nordrhein-Westfalen",
+    "city": "Düren"
+  },
+  {
+    "code": "duesseldorf",
+    "name": "COMCAVE Düsseldorf",
+    "state": "Nordrhein-Westfalen",
+    "city": "Düsseldorf"
+  },
+  {
+    "code": "erftstadt",
+    "name": "COMCAVE Erftstadt",
+    "state": "Nordrhein-Westfalen",
+    "city": "Erftstadt"
+  },
+  {
+    "code": "erkelenz",
+    "name": "COMCAVE Erkelenz",
+    "state": "Nordrhein-Westfalen",
+    "city": "Erkelenz"
+  },
+  {
+    "code": "erkrath",
+    "name": "COMCAVE Erkrath",
+    "state": "Nordrhein-Westfalen",
+    "city": "Erkrath"
+  },
+  {
+    "code": "eschweiler",
+    "name": "COMCAVE Eschweiler",
+    "state": "Nordrhein-Westfalen",
+    "city": "Eschweiler"
+  },
+  {
+    "code": "essen",
+    "name": "COMCAVE Essen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Essen"
+  },
+  {
+    "code": "euskirchen",
+    "name": "COMCAVE Euskirchen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Euskirchen"
+  },
+  {
+    "code": "frechen",
+    "name": "COMCAVE Frechen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Frechen"
+  },
+  {
+    "code": "geilenkirchen",
+    "name": "COMCAVE Geilenkirchen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Geilenkirchen"
+  },
+  {
+    "code": "gelsenkirchen",
+    "name": "COMCAVE Gelsenkirchen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Gelsenkirchen"
+  },
+  {
+    "code": "gladbeck",
+    "name": "COMCAVE Gladbeck",
+    "state": "Nordrhein-Westfalen",
+    "city": "Gladbeck"
+  },
+  {
+    "code": "guetersloh",
+    "name": "COMCAVE Gütersloh",
+    "state": "Nordrhein-Westfalen",
+    "city": "Gütersloh"
+  },
+  {
+    "code": "hagen",
+    "name": "COMCAVE Hagen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Hagen"
+  },
+  {
+    "code": "haltern-am-see",
+    "name": "COMCAVE Haltern am See",
+    "state": "Nordrhein-Westfalen",
+    "city": "Haltern am See"
+  },
+  {
+    "code": "hamm",
+    "name": "COMCAVE Hamm",
+    "state": "Nordrhein-Westfalen",
+    "city": "Hamm"
+  },
+  {
+    "code": "hattingen",
+    "name": "COMCAVE Hattingen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Hattingen"
+  },
+  {
+    "code": "hennef",
+    "name": "COMCAVE Hennef",
+    "state": "Nordrhein-Westfalen",
+    "city": "Hennef"
+  },
+  {
+    "code": "herford",
+    "name": "COMCAVE Herford",
+    "state": "Nordrhein-Westfalen",
+    "city": "Herford"
+  },
+  {
+    "code": "herne",
+    "name": "COMCAVE Herne",
+    "state": "Nordrhein-Westfalen",
+    "city": "Herne"
+  },
+  {
+    "code": "herzogenrath",
+    "name": "COMCAVE Herzogenrath",
+    "state": "Nordrhein-Westfalen",
+    "city": "Herzogenrath"
+  },
+  {
+    "code": "hilden",
+    "name": "COMCAVE Hilden",
+    "state": "Nordrhein-Westfalen",
+    "city": "Hilden"
+  },
+  {
+    "code": "hueckelhoven",
+    "name": "COMCAVE Hückelhoven",
+    "state": "Nordrhein-Westfalen",
+    "city": "Hückelhoven"
+  },
+  {
+    "code": "huerth",
+    "name": "COMCAVE Hürth",
+    "state": "Nordrhein-Westfalen",
+    "city": "Hürth"
+  },
+  {
+    "code": "ibbenbueren",
+    "name": "COMCAVE Ibbenbüren",
+    "state": "Nordrhein-Westfalen",
+    "city": "Ibbenbüren"
+  },
+  {
+    "code": "iserlohn",
+    "name": "COMCAVE Iserlohn",
+    "state": "Nordrhein-Westfalen",
+    "city": "Iserlohn"
+  },
+  {
+    "code": "kaarst",
+    "name": "COMCAVE Kaarst",
+    "state": "Nordrhein-Westfalen",
+    "city": "Kaarst"
+  },
+  {
     "code": "koeln",
     "name": "COMCAVE Köln",
     "state": "Nordrhein-Westfalen",
     "city": "Köln"
   },
   {
+    "code": "krefeld",
+    "name": "COMCAVE Krefeld",
+    "state": "Nordrhein-Westfalen",
+    "city": "Krefeld"
+  },
+  {
+    "code": "kreuztal",
+    "name": "COMCAVE Kreuztal",
+    "state": "Nordrhein-Westfalen",
+    "city": "Kreuztal"
+  },
+  {
+    "code": "lemgo",
+    "name": "COMCAVE Lemgo",
+    "state": "Nordrhein-Westfalen",
+    "city": "Lemgo"
+  },
+  {
+    "code": "lippstadt",
+    "name": "COMCAVE Lippstadt",
+    "state": "Nordrhein-Westfalen",
+    "city": "Lippstadt"
+  },
+  {
+    "code": "luedenscheid",
+    "name": "COMCAVE Lüdenscheid",
+    "state": "Nordrhein-Westfalen",
+    "city": "Lüdenscheid"
+  },
+  {
+    "code": "luenen",
+    "name": "COMCAVE Lünen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Lünen"
+  },
+  {
+    "code": "marl",
+    "name": "COMCAVE Marl",
+    "state": "Nordrhein-Westfalen",
+    "city": "Marl"
+  },
+  {
+    "code": "meerbusch",
+    "name": "COMCAVE Meerbusch",
+    "state": "Nordrhein-Westfalen",
+    "city": "Meerbusch"
+  },
+  {
+    "code": "menden",
+    "name": "COMCAVE Menden",
+    "state": "Nordrhein-Westfalen",
+    "city": "Menden"
+  },
+  {
+    "code": "mettmann",
+    "name": "COMCAVE Mettmann",
+    "state": "Nordrhein-Westfalen",
+    "city": "Mettmann"
+  },
+  {
+    "code": "minden",
+    "name": "COMCAVE Minden",
+    "state": "Nordrhein-Westfalen",
+    "city": "Minden"
+  },
+  {
+    "code": "moers",
+    "name": "COMCAVE Moers",
+    "state": "Nordrhein-Westfalen",
+    "city": "Moers"
+  },
+  {
+    "code": "moenchengladbach",
+    "name": "COMCAVE Mönchengladbach",
+    "state": "Nordrhein-Westfalen",
+    "city": "Mönchengladbach"
+  },
+  {
+    "code": "monheim",
+    "name": "COMCAVE Monheim am Rhein",
+    "state": "Nordrhein-Westfalen",
+    "city": "Monheim am Rhein"
+  },
+  {
     "code": "monschau",
     "name": "COMCAVE Monschau",
     "state": "Nordrhein-Westfalen",
     "city": "Monschau"
+  },
+  {
+    "code": "muelheim-an-der-ruhr",
+    "name": "COMCAVE Mülheim an der Ruhr",
+    "state": "Nordrhein-Westfalen",
+    "city": "Mülheim an der Ruhr"
+  },
+  {
+    "code": "muenster",
+    "name": "COMCAVE Münster",
+    "state": "Nordrhein-Westfalen",
+    "city": "Münster"
+  },
+  {
+    "code": "neukirchen-vluyn",
+    "name": "COMCAVE Neukirchen-Vluyn",
+    "state": "Nordrhein-Westfalen",
+    "city": "Neukirchen-Vluyn"
+  },
+  {
+    "code": "neuss",
+    "name": "COMCAVE Neuss",
+    "state": "Nordrhein-Westfalen",
+    "city": "Neuss"
   },
   {
     "code": "oberhausen",
@@ -411,16 +1033,70 @@
     "city": "Paderborn"
   },
   {
+    "code": "ratingen",
+    "name": "COMCAVE Ratingen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Ratingen"
+  },
+  {
+    "code": "recklinghausen",
+    "name": "COMCAVE Recklinghausen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Recklinghausen"
+  },
+  {
+    "code": "remscheid",
+    "name": "COMCAVE Remscheid",
+    "state": "Nordrhein-Westfalen",
+    "city": "Remscheid"
+  },
+  {
     "code": "siegen",
     "name": "COMCAVE Siegen",
     "state": "Nordrhein-Westfalen",
     "city": "Siegen"
   },
   {
+    "code": "solingen",
+    "name": "COMCAVE Solingen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Solingen"
+  },
+  {
+    "code": "troisdorf",
+    "name": "COMCAVE Troisdorf",
+    "state": "Nordrhein-Westfalen",
+    "city": "Troisdorf"
+  },
+  {
     "code": "velbert",
     "name": "COMCAVE Velbert",
     "state": "Nordrhein-Westfalen",
     "city": "Velbert"
+  },
+  {
+    "code": "viersen",
+    "name": "COMCAVE Viersen",
+    "state": "Nordrhein-Westfalen",
+    "city": "Viersen"
+  },
+  {
+    "code": "wesel",
+    "name": "COMCAVE Wesel",
+    "state": "Nordrhein-Westfalen",
+    "city": "Wesel"
+  },
+  {
+    "code": "witten",
+    "name": "COMCAVE Witten",
+    "state": "Nordrhein-Westfalen",
+    "city": "Witten"
+  },
+  {
+    "code": "wuppertal",
+    "name": "COMCAVE Wuppertal",
+    "state": "Nordrhein-Westfalen",
+    "city": "Wuppertal"
   },
   {
     "code": "wuerselen",
@@ -475,6 +1151,12 @@
     "name": "COMCAVE Mayen",
     "state": "Rheinland-Pfalz",
     "city": "Mayen"
+  },
+  {
+    "code": "montabaur",
+    "name": "COMCAVE Montabaur",
+    "state": "Rheinland-Pfalz",
+    "city": "Montabaur"
   },
   {
     "code": "neustadt-an-der-weinstrasse",
@@ -549,16 +1231,29 @@
     "city": "Leipzig"
   },
   {
+    "code": "pirna",
+    "name": "COMCAVE Pirna",
+    "state": "Sachsen",
+    "city": "Pirna"
+  },
+  {
     "code": "plauen",
     "name": "COMCAVE Plauen",
     "state": "Sachsen",
     "city": "Plauen"
   },
   {
+    "code": "zwickau",
+    "name": "COMCAVE Zwickau",
+    "state": "Sachsen",
+    "city": "Zwickau"
+  },
+  {
     "code": "dessau-rosslau",
     "name": "COMCAVE Dessau-Roßlau",
     "state": "Sachsen-Anhalt",
-    "city": "Dessau-Roßlau"
+    "city": "Dessau-Roßlau",
+    "postalCode": "06844"
   },
   {
     "code": "halberstadt",

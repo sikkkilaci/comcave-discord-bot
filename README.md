@@ -88,7 +88,7 @@ angelegt werden). Die Zuordnung eines Mitglieds zu einem Standort (`Member.locat
 dagegen ganz normal guild-/mitgliedsgebunden.
 
 - Die Quelldatei (`data/locations/comcave-standorte.json`) enthaelt einen verifizierten Teilbestand
-  von 110 echten COMCAVE-Standorten (Stadt + Bundesland, teils PLZ), ausschliesslich von
+  von 226 echten COMCAVE-Standorten (Stadt + Bundesland, teils PLZ), ausschliesslich von
   [comcave.de/standorte](https://www.comcave.de/standorte) stammend - **keine** erfundenen oder aus
   Drittquellen ergaenzten Daten. Quelle, Erhebungsstand und Grenzen der Abdeckung (noch nicht alle
   300+ offiziellen Standorte) sind in `data/locations/README.md` dokumentiert; die Administration kann
