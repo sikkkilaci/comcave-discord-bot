@@ -225,6 +225,13 @@ Konvention. Der Befehl ist **pro Kanal idempotent**: ein erneuter Aufruf legt ni
 sondern ergaenzt nur fehlende Kanaele (z. B. wenn einer versehentlich geloescht wurde) und laesst
 alle bestehenden unangetastet.
 
+Die Emojis oben sind nicht nur Doku-Deko: jeder neu angelegte Kanal traegt das Emoji direkt im
+Discord-Namen (z. B. `💬-klassenchat`), bekommt ein erklaerendes Thema (Discords Kanal-Header-Text)
+und - einmalig beim Neuanlegen - eine kurze angepinnte Willkommensnachricht mit Hinweisen auf die
+passenden Befehle. Rein kosmetisch: schlaegt das Posten/Anpinnen ausnahmsweise fehl, bleibt der
+Kanal trotzdem voll nutzbar. Bereits vorhandene, wiederverwendete Kanaele werden dabei nicht
+nachtraeglich umbenannt oder mit einer Nachricht versehen.
+
 ## Klassenleitung
 
 Eine Klassenleitung ist **kein Discord-Administrator** - sie darf ausschliesslich ihre eigene
@@ -394,10 +401,12 @@ ausschliesslich ueber die gemeinsame Kursnummer (`courseNumber`), nicht per Frem
 Kurs-Slot (`CourseEntry`) pro Klasse dupliziert wird, waehrend der Inhalt genau einmal global gilt.
 
 - Reproduzierbarer CLI-Import: `npm run kursinhalte:import`.
-- Noch OHNE eigene Discord-UI/-Commands (bewusst, siehe Aufgabenstellung) - die Daten sind bereits
-  ueber `src/services/courseContentService.ts` (`getCourseContentForEntry()`/
-  `getCourseContentByCourseNumber()`) abrufbar und fuer eine spaetere Erweiterung von `/kursplan`
-  vorbereitet.
+- `/kursinhalte [kurs:<Kursnummer>]` (VERIFIED) zeigt die hierarchisch nummerierte Gliederung eines
+  Kurses an - ohne Angabe wird automatisch der aktuell laufende Kurs der eigenen Klasse verwendet
+  (`src/services/coursePlanService.ts`), mit `kurs:<Kursnummer>` kann jeder importierte Kurs direkt
+  nachgeschlagen werden (globaler Katalog, keine Klassenbindung). `/kursplan` verlinkt im Footer
+  darauf. Nutzt `src/services/courseContentService.ts` (`getCourseContentForEntry()`/
+  `getCourseContentByCourseNumber()`).
 - Enthaelt aktuell **34 Kurse** und **592 hierarchisch nummerierte Inhaltseintraege** (9 Kurse ohne
   Inhalte in der Quelle - z. B. Betriebliche Praxisphasen - bleiben konsequent ohne Eintraege statt
   kuenstlich aufgefuellt zu werden).

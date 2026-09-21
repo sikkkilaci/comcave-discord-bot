@@ -44,6 +44,7 @@ describe('commandLoader', () => {
       'setup-admin-rollen': PermissionLevel.ADMIN,
       'audit-log': PermissionLevel.ADMIN,
       kursplan: PermissionLevel.VERIFIED,
+      kursinhalte: PermissionLevel.VERIFIED,
       'kursplan-status': PermissionLevel.KLASSENLEITUNG,
       'kursplan-importieren': PermissionLevel.ADMIN,
       'lerngruppe-erstellen': PermissionLevel.VERIFIED,

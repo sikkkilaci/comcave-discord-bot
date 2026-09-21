@@ -22,6 +22,7 @@ interface FakeCreateOptions {
   type: ChannelType;
   parent?: string;
   permissionOverwrites?: FakeOverwrite[];
+  topic?: string;
 }
 
 const EVERYONE_ID = 'role-everyone';
@@ -63,15 +64,38 @@ function fakeGuild(options: {
   existingChannelIds?: Set<string>;
   createImpl?: (opts: FakeCreateOptions) => Promise<{ id: string }>;
   botPermissions?: Set<bigint>;
-}): { guild: Guild; createCalls: FakeCreateOptions[] } {
+  sendImpl?: (channelId: string, text: string) => Promise<unknown>;
+}): {
+  guild: Guild;
+  createCalls: FakeCreateOptions[];
+  sendCalls: Array<{ channelId: string; text: string }>;
+  pinCalls: string[];
+} {
   const existing = options.existingChannelIds ?? new Set<string>();
   const createCalls: FakeCreateOptions[] = [];
+  const sendCalls: Array<{ channelId: string; text: string }> = [];
+  const pinCalls: string[] = [];
   const botPermissions = options.botPermissions ?? ALL_RELEVANT_BOT_PERMISSIONS;
+
+  function fakeChannel(id: string) {
+    return {
+      id,
+      send: vi.fn(async (text: string) => {
+        sendCalls.push({ channelId: id, text });
+        if (options.sendImpl) await options.sendImpl(id, text);
+        return {
+          pin: vi.fn(async () => {
+            pinCalls.push(id);
+          }),
+        };
+      }),
+    };
+  }
 
   const create = vi.fn(async (opts: FakeCreateOptions) => {
     createCalls.push(opts);
     if (options.createImpl) return options.createImpl(opts);
-    return { id: fakeIdFor(opts) };
+    return fakeChannel(fakeIdFor(opts));
   });
 
   const fetch = vi.fn(async (id: string) => {
@@ -87,7 +111,7 @@ function fakeGuild(options: {
     members: { me, fetchMe: vi.fn(async () => me) },
   } as unknown as Guild;
 
-  return { guild, createCalls };
+  return { guild, createCalls, sendCalls, pinCalls };
 }
 
 async function setupGuildAndClass(overrides: { adminRoleId?: string } = {}) {
@@ -129,13 +153,13 @@ describe('classAreaService', () => {
       expect(result.categoryCreated).toBe(true);
       expect(result.channelsCreated.sort()).toEqual(
         [
-          'klassenchat',
-          'ankuendigungen',
-          'termine',
-          'pruefungen',
-          'berichtsheft',
-          'lernmaterial',
-          'sprachkanal',
+          '💬-klassenchat',
+          '📢-ankuendigungen',
+          '📅-termine',
+          '🎓-pruefungen',
+          '📝-berichtsheft',
+          '📚-lernmaterial',
+          '🔊-sprachkanal',
         ].sort(),
       );
       expect(result.channelsSkipped).toHaveLength(0);
@@ -150,7 +174,7 @@ describe('classAreaService', () => {
       await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 
       const category = createCalls.find((c) => c.type === ChannelType.GuildCategory);
-      expect(category?.name).toBe('Klasse A');
+      expect(category?.name).toBe('📁 Klasse A');
 
       const children = createCalls.filter((c) => c.type !== ChannelType.GuildCategory);
       expect(children).toHaveLength(7);
@@ -158,9 +182,9 @@ describe('classAreaService', () => {
         expect(child.parent).toBe(fakeIdFor(category!));
       }
 
-      const voice = createCalls.find((c) => c.name === 'sprachkanal');
+      const voice = createCalls.find((c) => c.name === '🔊-sprachkanal');
       expect(voice?.type).toBe(ChannelType.GuildVoice);
-      const textChannels = children.filter((c) => c.name !== 'sprachkanal');
+      const textChannels = children.filter((c) => c.name !== '🔊-sprachkanal');
       for (const textChannel of textChannels) {
         expect(textChannel.type).toBe(ChannelType.GuildText);
       }
@@ -173,14 +197,14 @@ describe('classAreaService', () => {
       await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 
       const stored = await getClassByName(guildId, 'A');
-      expect(stored?.categoryId).toBe('category:Klasse A');
-      expect(stored?.chatChannelId).toBe('channel:klassenchat');
-      expect(stored?.announcementChannelId).toBe('channel:ankuendigungen');
-      expect(stored?.scheduleChannelId).toBe('channel:termine');
-      expect(stored?.examChannelId).toBe('channel:pruefungen');
-      expect(stored?.reportChannelId).toBe('channel:berichtsheft');
-      expect(stored?.materialChannelId).toBe('channel:lernmaterial');
-      expect(stored?.voiceChannelId).toBe('channel:sprachkanal');
+      expect(stored?.categoryId).toBe('category:📁 Klasse A');
+      expect(stored?.chatChannelId).toBe('channel:💬-klassenchat');
+      expect(stored?.announcementChannelId).toBe('channel:📢-ankuendigungen');
+      expect(stored?.scheduleChannelId).toBe('channel:📅-termine');
+      expect(stored?.examChannelId).toBe('channel:🎓-pruefungen');
+      expect(stored?.reportChannelId).toBe('channel:📝-berichtsheft');
+      expect(stored?.materialChannelId).toBe('channel:📚-lernmaterial');
+      expect(stored?.voiceChannelId).toBe('channel:🔊-sprachkanal');
     });
 
     it('schreibt einen "class.area_setup"-Audit-Log-Eintrag', async () => {
@@ -204,8 +228,8 @@ describe('classAreaService', () => {
 
       await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 
-      const announcements = createCalls.find((c) => c.name === 'ankuendigungen');
-      const chat = createCalls.find((c) => c.name === 'klassenchat');
+      const announcements = createCalls.find((c) => c.name === '📢-ankuendigungen');
+      const chat = createCalls.find((c) => c.name === '💬-klassenchat');
 
       const announcementsOverwrite = overwriteFor(announcements!, roleId);
       const chatOverwrite = overwriteFor(chat!, roleId);
@@ -257,10 +281,10 @@ describe('classAreaService', () => {
       const { guild, createCalls } = fakeGuild({});
       await setupClassArea(guild, guildConfig, klasseB, 'actor-1');
 
-      const chat = createCalls.find((c) => c.name === 'klassenchat');
+      const chat = createCalls.find((c) => c.name === '💬-klassenchat');
       expect(overwriteFor(chat!, leadRoleId)?.allow).toContain(PermissionFlagsBits.ManageMessages);
 
-      const announcements = createCalls.find((c) => c.name === 'ankuendigungen');
+      const announcements = createCalls.find((c) => c.name === '📢-ankuendigungen');
       expect(overwriteFor(announcements!, leadRoleId)?.allow).toContain(
         PermissionFlagsBits.SendMessages,
       );
@@ -322,13 +346,13 @@ describe('classAreaService', () => {
       const result = await setupClassArea(second.guild, guildConfig, configured, 'actor-1');
 
       expect(result.categoryCreated).toBe(false);
-      expect(result.channelsCreated).toEqual(['klassenchat']);
+      expect(result.channelsCreated).toEqual(['💬-klassenchat']);
       expect(result.channelsSkipped).toHaveLength(6);
       expect(second.createCalls).toHaveLength(1);
-      expect(second.createCalls[0]?.name).toBe('klassenchat');
+      expect(second.createCalls[0]?.name).toBe('💬-klassenchat');
 
       const repaired = await getClassByName(guildId, 'A');
-      expect(repaired?.chatChannelId).toBe('channel:klassenchat');
+      expect(repaired?.chatChannelId).toBe('channel:💬-klassenchat');
     });
   });
 
@@ -413,6 +437,75 @@ describe('classAreaService', () => {
     it('legt den Klassenbereich weiterhin normal an, wenn der Bot alle benoetigten Berechtigungen hat (kein falsch-positiver Abbruch)', async () => {
       const { guildConfig, klasse } = await setupGuildAndClass();
       const { guild } = fakeGuild({});
+
+      const result = await setupClassArea(guild, guildConfig, klasse, 'actor-1');
+
+      expect(result.categoryCreated).toBe(true);
+      expect(result.channelsCreated).toHaveLength(7);
+    });
+  });
+
+  describe('setupClassArea - Kanal-Politur (Thema + Willkommensnachricht)', () => {
+    it('setzt ein Thema und postet+pinnt eine Willkommensnachricht in jedem neu angelegten Textkanal', async () => {
+      const { guildConfig, klasse } = await setupGuildAndClass();
+      const { guild, createCalls, sendCalls, pinCalls } = fakeGuild({});
+
+      await setupClassArea(guild, guildConfig, klasse, 'actor-1');
+
+      const textChannelCalls = createCalls.filter(
+        (c) => c.type === ChannelType.GuildText && c.name !== undefined,
+      );
+      expect(textChannelCalls).toHaveLength(6);
+      for (const call of textChannelCalls) {
+        expect(call.topic).toBeTruthy();
+      }
+      // 6 Textkanaele bekommen je eine gepostete UND angepinnte Willkommensnachricht.
+      expect(sendCalls).toHaveLength(6);
+      expect(pinCalls).toHaveLength(6);
+    });
+
+    it('postet keine Willkommensnachricht in den Sprachkanal', async () => {
+      const { guildConfig, klasse } = await setupGuildAndClass();
+      const { guild, sendCalls } = fakeGuild({});
+
+      await setupClassArea(guild, guildConfig, klasse, 'actor-1');
+
+      const voiceChannelId = fakeIdFor({ name: '🔊-sprachkanal', type: ChannelType.GuildVoice });
+      expect(sendCalls.some((c) => c.channelId === voiceChannelId)).toBe(false);
+    });
+
+    it('postet keine Willkommensnachricht in einen wiederverwendeten (bereits vorhandenen) Kanal', async () => {
+      const { guildId, guildConfig, klasse } = await setupGuildAndClass();
+      const first = fakeGuild({});
+      await setupClassArea(first.guild, guildConfig, klasse, 'actor-1');
+      const configured = (await getClassByName(guildId, 'A'))!;
+
+      const existingIds = new Set(
+        [
+          configured.categoryId,
+          configured.chatChannelId,
+          configured.announcementChannelId,
+          configured.scheduleChannelId,
+          configured.examChannelId,
+          configured.reportChannelId,
+          configured.materialChannelId,
+          configured.voiceChannelId,
+        ].filter((id): id is string => Boolean(id)),
+      );
+      const second = fakeGuild({ existingChannelIds: existingIds });
+
+      await setupClassArea(second.guild, guildConfig, configured, 'actor-1');
+
+      expect(second.sendCalls).toHaveLength(0);
+    });
+
+    it('bricht das Setup nicht ab, wenn Senden/Anpinnen der Willkommensnachricht fehlschlaegt', async () => {
+      const { guildConfig, klasse } = await setupGuildAndClass();
+      const { guild } = fakeGuild({
+        sendImpl: async () => {
+          throw new Error('Kanal-Berechtigung fehlt zufaellig fuer diese Nachricht');
+        },
+      });
 
       const result = await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 

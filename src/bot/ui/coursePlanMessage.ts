@@ -54,7 +54,9 @@ export function buildCoursePlanOverviewMessage(
   const embed = new EmbedBuilder()
     .setTitle(`Kursplan - ${CLASS_NAME_LABELS[overview.className]}`)
     .setColor(0x2b2d31)
-    .setFooter({ text: `ISO-Kalenderwoche ${overview.isoWeek}/${overview.isoWeekYear}` });
+    .setFooter({
+      text: `ISO-Kalenderwoche ${overview.isoWeek}/${overview.isoWeekYear} · Kursgliederung: /kursinhalte`,
+    });
 
   if (!overview.hasOwnPlan) {
     embed.setDescription(

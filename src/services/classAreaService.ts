@@ -3,9 +3,11 @@ import {
   DiscordAPIError,
   PermissionFlagsBits,
   type Guild,
+  type GuildBasedChannel,
   type GuildChannelCreateOptions,
   type OverwriteResolvable,
   type ReadonlyCollection,
+  type TextChannel,
 } from 'discord.js';
 import type { Class, GuildConfig } from '@prisma/client';
 import { updateClassChannels, type ClassChannelUpdate } from '../repositories/classRepository.js';
@@ -27,6 +29,14 @@ interface ChannelBlueprint {
   type: ChannelType.GuildText | ChannelType.GuildVoice;
   /** Klassenrolle darf hier nur lesen (z. B. Ankuendigungen), nicht schreiben. */
   readOnlyForClass?: boolean;
+  /** Discords natives Kanal-"Thema" - erklaert den Zweck direkt im Kanal-Header. */
+  topic?: string;
+  /**
+   * Einmalige, angepinnte Nachricht direkt nach dem Neuanlegen (nicht bei
+   * Wiederverwendung eines bereits vorhandenen Kanals - siehe setupClassArea()).
+   * Rein kosmetisch/informativ, kein Ersatz fuer echte Fachlogik.
+   */
+  welcomeMessage?: string;
 }
 
 /**
@@ -37,21 +47,67 @@ interface ChannelBlueprint {
  * ist eindeutig als Einweg-Kanal zu verstehen (read-only fuer die Klasse);
  * alle anderen bleiben voll beschreibbar, da z. B. das Berichtsheft von den
  * Mitgliedern selbst befuellt wird. Admins koennen einzelne Kanal-Berechtigungen
- * bei Bedarf manuell in Discord weiter anpassen.
+ * bei Bedarf manuell in Discord weiter anpassen. Emoji-Praefix, Thema und
+ * Willkommensnachricht sind rein kosmetisch (lesbarer/einladender direkt nach
+ * /setup-server bzw. /setup-klassenbereiche) und aendern nichts an Rechten
+ * oder Datenmodell.
  */
 const CHANNEL_BLUEPRINTS: readonly ChannelBlueprint[] = [
-  { key: 'chatChannelId', name: 'klassenchat', type: ChannelType.GuildText },
+  {
+    key: 'chatChannelId',
+    name: '💬-klassenchat',
+    type: ChannelType.GuildText,
+    topic: 'Offener Chat der Klasse.',
+    welcomeMessage:
+      '👋 Willkommen im Klassenchat! Hier ist Platz für alles, was nicht in einen der anderen ' +
+      'Kanäle gehört.',
+  },
   {
     key: 'announcementChannelId',
-    name: 'ankuendigungen',
+    name: '📢-ankuendigungen',
     type: ChannelType.GuildText,
     readOnlyForClass: true,
+    topic: 'Ankündigungen der Klassenleitung/Admins - nur Lesezugriff für die Klasse.',
+    welcomeMessage:
+      '📢 Hier postet die Klassenleitung wichtige Ankündigungen. Ihr könnt hier nur lesen, ' +
+      'nicht schreiben.',
   },
-  { key: 'scheduleChannelId', name: 'termine', type: ChannelType.GuildText },
-  { key: 'examChannelId', name: 'pruefungen', type: ChannelType.GuildText },
-  { key: 'reportChannelId', name: 'berichtsheft', type: ChannelType.GuildText },
-  { key: 'materialChannelId', name: 'lernmaterial', type: ChannelType.GuildText },
-  { key: 'voiceChannelId', name: 'sprachkanal', type: ChannelType.GuildVoice },
+  {
+    key: 'scheduleChannelId',
+    name: '📅-termine',
+    type: ChannelType.GuildText,
+    topic: 'Anstehende Termine der Klasse.',
+    welcomeMessage:
+      '📅 Hier findet ihr anstehende Termine eurer Klasse. `/kursplan` zeigt euren aktuellen ' +
+      'Kursplan mit Kalenderwoche, `/kursinhalte` die Kursgliederung.',
+  },
+  {
+    key: 'examChannelId',
+    name: '🎓-pruefungen',
+    type: ChannelType.GuildText,
+    topic: 'Prüfungen der Klasse.',
+    welcomeMessage:
+      '🎓 Hier werden Prüfungen angekündigt. `/pruefungen-anzeigen` zeigt eine Übersicht.',
+  },
+  {
+    key: 'reportChannelId',
+    name: '📝-berichtsheft',
+    type: ChannelType.GuildText,
+    topic: 'Tages-/Wochenberichte fürs Berichtsheft.',
+    welcomeMessage:
+      '📝 Hier dokumentiert ihr eure Tages- und Wochenberichte. Nutzt `/tagesbericht-erstellen` ' +
+      'bzw. `/wochenbericht-erstellen`.',
+  },
+  {
+    key: 'materialChannelId',
+    name: '📚-lernmaterial',
+    type: ChannelType.GuildText,
+    topic: 'Geteiltes Lernmaterial der Klasse.',
+    welcomeMessage:
+      '📚 Hier teilt die Klassenleitung Lernmaterial. `/lernmaterial-anzeigen` zeigt eine ' +
+      'Übersicht.',
+  },
+  { key: 'voiceChannelId', name: '🔊-sprachkanal', type: ChannelType.GuildVoice },
 ];
 
 /**
@@ -157,11 +213,16 @@ export async function setupClassArea(
       type: blueprint.type,
       parent: category.id,
       permissionOverwrites: overwrites,
+      ...(blueprint.topic ? { topic: blueprint.topic } : {}),
       reason: `Privater Klassenbereich fuer Klasse ${klasse.name}`,
     });
 
     updates[blueprint.key] = channel.id;
     channelsCreated.push(blueprint.name);
+
+    if (blueprint.welcomeMessage && blueprint.type === ChannelType.GuildText) {
+      await postWelcomeMessage(channel, blueprint.welcomeMessage);
+    }
   }
 
   if (category.created) {
@@ -212,7 +273,7 @@ async function ensureCategory(
 
   const overwrites = buildOverwrites(guild, guildConfig, klasse, { classCanSend: true });
   const category = await createChannelOrThrow(guild, {
-    name: `Klasse ${klasse.name}`,
+    name: `📁 Klasse ${klasse.name}`,
     type: ChannelType.GuildCategory,
     permissionOverwrites: overwrites,
     reason: `Privater Klassenbereich fuer Klasse ${klasse.name}`,
@@ -383,7 +444,7 @@ async function assertBotCanApplyOverwrites(
 async function createChannelOrThrow(
   guild: Guild,
   options: GuildChannelCreateOptions,
-): Promise<{ id: string }> {
+): Promise<GuildBasedChannel> {
   await assertBotCanApplyOverwrites(guild, options.permissionOverwrites ?? []);
 
   try {
@@ -396,5 +457,24 @@ async function createChannelOrThrow(
       );
     }
     throw error;
+  }
+}
+
+/**
+ * Postet eine kurze, angepinnte Willkommensnachricht in einen frisch
+ * angelegten Klassenkanal. Rein kosmetisch: schlaegt das Senden/Anpinnen fehl
+ * (z. B. fehlende Berechtigung zum Anpinnen), bleibt der Kanal trotzdem
+ * nutzbar - es wird nur eine Warnung geloggt, kein Abbruch des gesamten
+ * Klassenbereichs-Setups wegen einer reinen Komfortfunktion.
+ */
+async function postWelcomeMessage(channel: GuildBasedChannel, text: string): Promise<void> {
+  try {
+    const message = await (channel as TextChannel).send(text);
+    await message.pin();
+  } catch (error) {
+    logger.warn(
+      { channelId: channel.id, err: error },
+      'Willkommensnachricht konnte nicht gepostet oder angepinnt werden - Kanal bleibt nutzbar.',
+    );
   }
 }

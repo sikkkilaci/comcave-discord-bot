@@ -382,7 +382,7 @@ describe('serverBootstrapService', () => {
       const channels = new Map<string, FakeChannel>([
         [
           'channel-existing-woBinIch',
-          makeFakeChannel('channel-existing-woBinIch', 'wo-bin-ich', ChannelType.GuildText),
+          makeFakeChannel('channel-existing-woBinIch', '🧭-wo-bin-ich', ChannelType.GuildText),
         ],
       ]);
       const { guild } = fakeGuild({ channels });
@@ -397,7 +397,7 @@ describe('serverBootstrapService', () => {
     it('postet keine zweite Nachricht, wenn der wiederverwendete Kanal bereits eine passende Nachricht enthaelt', async () => {
       const existingChannel = makeFakeChannel(
         'channel-existing-verify',
-        'verifizierung',
+        '🔐-verifizierung',
         ChannelType.GuildText,
       );
       await existingChannel.send({
@@ -477,7 +477,7 @@ describe('serverBootstrapService', () => {
 
       const result = await bootstrapServer(guild, 'actor-1');
 
-      const logCreateCall = channelCreateCalls.find((c) => c.name === 'bot-log');
+      const logCreateCall = channelCreateCalls.find((c) => c.name === '📋-bot-log');
       expect(logCreateCall).toBeDefined();
       const everyoneOverwrite = logCreateCall?.permissionOverwrites?.find(
         (o) => o.id === 'role-everyone',
@@ -529,13 +529,13 @@ describe('serverBootstrapService', () => {
         expect(result.classes[name].role.name).toBe(`Klasse ${name}`);
         expect(result.classes[name].area.channelsCreated.sort()).toEqual(
           [
-            'klassenchat',
-            'ankuendigungen',
-            'termine',
-            'pruefungen',
-            'berichtsheft',
-            'lernmaterial',
-            'sprachkanal',
+            '💬-klassenchat',
+            '📢-ankuendigungen',
+            '📅-termine',
+            '🎓-pruefungen',
+            '📝-berichtsheft',
+            '📚-lernmaterial',
+            '🔊-sprachkanal',
           ].sort(),
         );
       }

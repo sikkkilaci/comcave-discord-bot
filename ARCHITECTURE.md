@@ -942,9 +942,14 @@ als Laufzeitquelle dient).
   kompletten Eintragsbestand (loeschen, was nicht mehr in der Quelle steht; upsert per
   `[courseNumber, orderIndex]`) - anders als beim Standort-Katalog unbedenklich, da kein anderes
   Modell per FK auf `CourseContentItem.id` verweist. CLI: `npm run kursinhalte:import`.
-- **Noch keine Discord-UI/-Commands** (bewusst, siehe Aufgabenstellung) - Daten sind bereits ueber die
-  Service-Schicht abrufbar und fuer eine spaetere Erweiterung von `/kursplan` bzw. einen neuen Befehl
-  vorbereitet, ohne dass Repository/Service sich dafuer aendern muessten.
+- **Discord-Anbindung:** `/kursinhalte [kurs:<Kursnummer>]` (`src/bot/commands/klasse/kursinhalte.ts`,
+  VERIFIED) zeigt die Gliederung eines Kurses als Embed (`src/bot/ui/courseContentMessage.ts`,
+  Einrueckung nach `level`). Ohne Angabe wird der aktuell laufende Kurs der eigenen Klasse ueber
+  `getCoursePlanOverviewForClass()` aufgeloest; mit `kurs:` kann jeder importierte Kurs direkt
+  nachgeschlagen werden, da der Katalog global und nicht klassengebunden ist - keine zusaetzliche
+  Berechtigungspruefung noetig (siehe `courseContentService.ts`: keine personenbezogenen Daten).
+  `/kursplan` verlinkt im Footer auf `/kursinhalte`. Repository/Service mussten dafuer nicht
+  geaendert werden - genau der vorbereitete Einstiegspunkt.
 
 ### Lerngruppen
 
@@ -1254,11 +1259,10 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
     Eintrittsflow an dieser Stelle mit einer verstaendlichen Fehlermeldung stehen (bewusst
     fail-closed, kein stillschweigendes Ueberspringen).
 21. ~~**Kursinhalte (eCampus-PDF-Extraktion)**~~ - **umgesetzt** (Datenmodell + Import + Service-
-    Schicht). Siehe Abschnitt ["Kursinhalte" im README](./README.md#kursinhalte) sowie "Kursinhalte"
-    oben: globaler Katalog (`CourseContentItem`), 34 Kurse/592 Inhaltseintraege aus
-    `data/course-plans/kursinhalte.json`, Verknuepfung zum Kursplan lose ueber `courseNumber`.
-    Bewusst noch OHNE eigene Discord-UI/-Commands - `courseContentService.ts` ist bereits als
-    Einstiegspunkt fuer eine spaetere `/kursplan`-Erweiterung vorbereitet.
+    Schicht + Discord-Befehl `/kursinhalte`). Siehe Abschnitt
+    ["Kursinhalte" im README](./README.md#kursinhalte) sowie "Kursinhalte" oben: globaler Katalog
+    (`CourseContentItem`), 34 Kurse/592 Inhaltseintraege aus `data/course-plans/kursinhalte.json`,
+    Verknuepfung zum Kursplan lose ueber `courseNumber`.
 22. ~~**Zentraler Server-Bootstrap (`/setup-server`)**~~ - **umgesetzt.** Siehe Abschnitt
     ["Server-Bootstrap" im README](./README.md#-server-bootstrap-setup-server) sowie
     "Server-Bootstrap" oben: orchestriert ausschliesslich bereits bestehende Services

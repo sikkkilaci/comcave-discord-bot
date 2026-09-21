@@ -50,9 +50,15 @@ const DISCORD_MISSING_PERMISSIONS = 50013;
 const VERIFIED_ROLE_NAME = 'Verifiziert';
 const ADMIN_ROLE_NAME = 'Admin';
 const MODERATOR_ROLE_NAME = 'Moderator';
-const VERIFICATION_CHANNEL_NAME = 'verifizierung';
-const WHERE_AM_I_CHANNEL_NAME = 'wo-bin-ich';
-const LOG_CHANNEL_NAME = 'bot-log';
+const VERIFICATION_CHANNEL_NAME = '🔐-verifizierung';
+const WHERE_AM_I_CHANNEL_NAME = '🧭-wo-bin-ich';
+const LOG_CHANNEL_NAME = '📋-bot-log';
+
+const VERIFICATION_CHANNEL_TOPIC =
+  'Verifiziere dich hier, um vollen Zugriff auf den Server zu erhalten.';
+const WHERE_AM_I_CHANNEL_TOPIC =
+  'Wähle deine Klasse (A/B/C), um Zugriff auf deinen Klassenbereich zu erhalten.';
+const LOG_CHANNEL_TOPIC = 'Reserviert für Bot-Ausgaben (aktuell ohne Schreiblogik).';
 
 function classRoleName(name: ClassName): string {
   return `Klasse ${name}`;
@@ -187,17 +193,22 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     guild,
     guildConfig.welcomeChannelId,
     VERIFICATION_CHANNEL_NAME,
+    undefined,
+    VERIFICATION_CHANNEL_TOPIC,
   );
   const whereAmIChannel = await ensureTextChannel(
     guild,
     guildConfig.whereAmIChannelId,
     WHERE_AM_I_CHANNEL_NAME,
+    undefined,
+    WHERE_AM_I_CHANNEL_TOPIC,
   );
   const logChannel = await ensureTextChannel(
     guild,
     guildConfig.logChannelId,
     LOG_CHANNEL_NAME,
     buildLogChannelOverwrites(guild, adminRole.role.id),
+    LOG_CHANNEL_TOPIC,
   );
 
   // --- 3. GuildConfig: Rollen/Kanal-IDs persistieren (bestehende Services/Repos). ---
@@ -361,6 +372,7 @@ async function ensureTextChannel(
   storedId: string | null | undefined,
   name: string,
   overwrites?: OverwriteResolvable[],
+  topic?: string,
 ): Promise<{ channel: TextChannel; created: boolean }> {
   if (storedId) {
     const existing = await fetchTextChannelSafely(guild, storedId);
@@ -374,6 +386,7 @@ async function ensureTextChannel(
     name,
     type: ChannelType.GuildText,
     ...(overwrites ? { permissionOverwrites: overwrites } : {}),
+    ...(topic ? { topic } : {}),
     reason: `COMCAVE-Server-Bootstrap: Kanal "${name}" angelegt`,
   });
   return { channel, created: true };
@@ -407,6 +420,7 @@ async function createChannelOrThrow(
     name: string;
     type: ChannelType.GuildText;
     permissionOverwrites?: OverwriteResolvable[];
+    topic?: string;
     reason: string;
   },
 ): Promise<TextChannel> {
