@@ -1,0 +1,232 @@
+import {
+  ChannelType,
+  PermissionFlagsBits,
+  type Guild,
+  type GuildBasedChannel,
+  type OverwriteResolvable,
+} from 'discord.js';
+import type { GuildConfig } from '@prisma/client';
+import { ValidationError } from '../utils/errors.js';
+
+export interface GlobalServerStructureResult {
+  categoriesCreated: string[];
+  channelsCreated: string[];
+  channelsReused: string[];
+}
+
+type Access = 'PUBLIC' | 'VERIFIED' | 'STAFF';
+
+interface ChannelBlueprint {
+  name: string;
+  type: ChannelType.GuildText | ChannelType.GuildVoice;
+  access: Access;
+  readOnly?: boolean;
+  topic?: string;
+}
+
+interface CategoryBlueprint {
+  name: string;
+  access: Access;
+  channels: readonly ChannelBlueprint[];
+}
+
+const STRUCTURE: readonly CategoryBlueprint[] = [
+  {
+    name: '01 · START',
+    access: 'PUBLIC',
+    channels: [
+      { name: '👋-willkommen', type: ChannelType.GuildText, access: 'PUBLIC', readOnly: true, topic: 'Startpunkt der COMCAVE-Plattform.' },
+      { name: '🔐-verifizierung', type: ChannelType.GuildText, access: 'PUBLIC', readOnly: true, topic: 'Verifizierung für den Zugang zur Plattform.' },
+      { name: '📜-regeln', type: ChannelType.GuildText, access: 'PUBLIC', readOnly: true, topic: 'Aktuelles Serverregelwerk.' },
+      { name: '🧑‍💻-onboarding', type: ChannelType.GuildText, access: 'PUBLIC', readOnly: true, topic: 'Persönliches Onboarding über den Bot.' },
+      { name: '🧭-wo-bin-ich', type: ChannelType.GuildText, access: 'PUBLIC', readOnly: true, topic: 'Klasse auswählen und Klassenbereich öffnen.' },
+    ],
+  },
+  {
+    name: '02 · ZENTRALE',
+    access: 'VERIFIED',
+    channels: [
+      { name: '📢-ankündigungen', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Zentrale Ankündigungen und wichtige Änderungen.' },
+      { name: '📌-wichtige-informationen', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Dauerhaft relevante Informationen zur Umschulung.' },
+      { name: '📅-termine', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Zentrale Termine und Fristen.' },
+      { name: '🗓️-ausbildungsplan', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Ausbildungsplan, aktueller Kurs und kommende Inhalte.' },
+      { name: '🧭-heute', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Tagesübersicht und relevante Hinweise.' },
+    ],
+  },
+  {
+    name: '03 · LERNEN',
+    access: 'VERIFIED',
+    channels: [
+      { name: '🎛️-lern-cockpit', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Persönlicher Lernstatus und nächste sinnvolle Schritte.' },
+      { name: '📚-kursinhalte', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Strukturierte Inhalte der COMCAVE-Kurse.' },
+      { name: '📖-lernmaterial', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Kuratiertes Lernmaterial.' },
+      { name: '❓-fragen-und-antworten', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Fachliche Fragen, Antworten und Erklärungen.' },
+      { name: '🧪-selbsttests', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Eigene Selbsttests und Testergebnisse.' },
+      { name: '📈-lernfortschritt', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Persönlicher Lernfortschritt und erkannte Lernfelder.' },
+    ],
+  },
+  {
+    name: '04 · PRÜFUNG',
+    access: 'VERIFIED',
+    channels: [
+      { name: '🎓-prüfungs-cockpit', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Prüfungsübersicht, Fristen und Lernschwerpunkte.' },
+      { name: '📝-prüfungen', type: ChannelType.GuildText, access: 'VERIFIED', readOnly: true, topic: 'Anstehende Prüfungen und Prüfungstermine.' },
+      { name: '🎯-prüfungsvorbereitung', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Gemeinsame Prüfungsvorbereitung.' },
+      { name: '🔎-prüfungsfragen', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Fragen und Diskussionen rund um Prüfungsthemen.' },
+    ],
+  },
+  {
+    name: '05 · ZUSAMMENARBEIT',
+    access: 'VERIFIED',
+    channels: [
+      { name: '👥-lerngruppen', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Lerngruppen bilden und gemeinsam arbeiten.' },
+      { name: '🆘-hilfe-gesucht', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Konkrete Hilfe bei Aufgaben und Problemen suchen.' },
+      { name: '🛠️-projekte', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Gemeinsame IT-Projekte und praktische Arbeiten.' },
+      { name: '💬-austausch', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Offener Austausch innerhalb der Umschulungsgruppe.' },
+    ],
+  },
+  {
+    name: '06 · ORGANISATION',
+    access: 'VERIFIED',
+    channels: [
+      { name: '📝-berichtsheft', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Berichtsheft, Tagesberichte und Wochenberichte.' },
+      { name: '📋-organisation', type: ChannelType.GuildText, access: 'VERIFIED', topic: 'Organisatorische Fragen und gegenseitige Unterstützung.' },
+    ],
+  },
+  {
+    name: '07 · LERNRÄUME',
+    access: 'VERIFIED',
+    channels: [
+      { name: '🔊-lernlounge', type: ChannelType.GuildVoice, access: 'VERIFIED' },
+      { name: '🔊-prüfungsvorbereitung', type: ChannelType.GuildVoice, access: 'VERIFIED' },
+    ],
+  },
+  {
+    name: '08 · INTERN',
+    access: 'STAFF',
+    channels: [
+      { name: '📋-bot-log', type: ChannelType.GuildText, access: 'STAFF', readOnly: true, topic: 'Technische Bot- und Audit-Ausgaben.' },
+      { name: '🛡️-moderation', type: ChannelType.GuildText, access: 'STAFF', topic: 'Interne Moderation und Fallbearbeitung.' },
+      { name: '⚙️-verwaltung', type: ChannelType.GuildText, access: 'STAFF', topic: 'Interne Serververwaltung.' },
+    ],
+  },
+];
+
+export async function ensureGlobalServerStructure(
+  guild: Guild,
+  guildConfig: GuildConfig,
+): Promise<GlobalServerStructureResult> {
+  const result: GlobalServerStructureResult = {
+    categoriesCreated: [],
+    channelsCreated: [],
+    channelsReused: [],
+  };
+
+  const verifiedRoleId = guildConfig.verifiedRoleId;
+  const adminRoleId = guildConfig.adminRoleId;
+  const moderatorRoleId = guildConfig.moderatorRoleId;
+
+  if (!verifiedRoleId || !adminRoleId || !moderatorRoleId) {
+    throw new ValidationError('Die Grundrollen müssen vor dem Serveraufbau konfiguriert sein.');
+  }
+
+  for (const categoryBlueprint of STRUCTURE) {
+    let category = guild.channels.cache.find(
+      (channel): channel is GuildBasedChannel =>
+        channel.type === ChannelType.GuildCategory && channel.name === categoryBlueprint.name,
+    );
+
+    if (!category) {
+      category = await guild.channels.create({
+        name: categoryBlueprint.name,
+        type: ChannelType.GuildCategory,
+        permissionOverwrites: buildOverwrites(guild, categoryBlueprint.access, verifiedRoleId, adminRoleId, moderatorRoleId, false),
+        reason: 'COMCAVE-Plattform: globale Serverstruktur',
+      });
+      result.categoriesCreated.push(categoryBlueprint.name);
+    } else {
+      await category.permissionOverwrites.set(
+        buildOverwrites(guild, categoryBlueprint.access, verifiedRoleId, adminRoleId, moderatorRoleId, false),
+        'COMCAVE-Plattform: globale Kategorie-Berechtigungen',
+      );
+    }
+
+    for (const blueprint of categoryBlueprint.channels) {
+      const existing = guild.channels.cache.find(
+        (channel): channel is GuildBasedChannel =>
+          channel.parentId === category.id && channel.name === blueprint.name && channel.type === blueprint.type,
+      );
+
+      if (existing) {
+        result.channelsReused.push(blueprint.name);
+        continue;
+      }
+
+      await guild.channels.create({
+        name: blueprint.name,
+        type: blueprint.type,
+        parent: category.id,
+        permissionOverwrites: buildOverwrites(
+          guild,
+          blueprint.access,
+          verifiedRoleId,
+          adminRoleId,
+          moderatorRoleId,
+          blueprint.readOnly ?? false,
+        ),
+        ...(blueprint.topic && blueprint.type === ChannelType.GuildText ? { topic: blueprint.topic } : {}),
+        reason: 'COMCAVE-Plattform: globale Serverstruktur',
+      });
+
+      result.channelsCreated.push(blueprint.name);
+    }
+  }
+
+  return result;
+}
+
+function buildOverwrites(
+  guild: Guild,
+  access: Access,
+  verifiedRoleId: string,
+  adminRoleId: string,
+  moderatorRoleId: string,
+  readOnly: boolean,
+): OverwriteResolvable[] {
+  const baseRead = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
+  const memberWrite = [...baseRead, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.AttachFiles];
+  const readOnlyMember = [...baseRead];
+
+  const overwrites: OverwriteResolvable[] = [];
+
+  if (access === 'PUBLIC') {
+    overwrites.push({
+      id: guild.roles.everyone.id,
+      allow: readOnly ? readOnlyMember : memberWrite,
+    });
+  } else if (access === 'VERIFIED') {
+    overwrites.push({
+      id: guild.roles.everyone.id,
+      deny: [PermissionFlagsBits.ViewChannel],
+    });
+    overwrites.push({
+      id: verifiedRoleId,
+      allow: readOnly ? readOnlyMember : memberWrite,
+    });
+  } else {
+    overwrites.push({
+      id: guild.roles.everyone.id,
+      deny: [PermissionFlagsBits.ViewChannel],
+    });
+    overwrites.push({
+      id: adminRoleId,
+      allow: memberWrite,
+    });
+    overwrites.push({
+      id: moderatorRoleId,
+      allow: memberWrite,
+    });
+  }
+
+  return overwrites;
+}
