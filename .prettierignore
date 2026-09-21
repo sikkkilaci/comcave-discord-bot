@@ -6,3 +6,4 @@ src/generated/
 # Versionierte externe Datenquellen (siehe ARCHITECTURE.md) - Originalinhalt
 # darf nicht veraendert werden, auch nicht durch Formatierung.
 data/course-plans/
+IHK Prüfungen.zip
