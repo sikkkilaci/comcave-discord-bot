@@ -115,6 +115,7 @@ const STRUCTURE: readonly CategoryBlueprint[] = [
 export async function ensureGlobalServerStructure(
   guild: Guild,
   guildConfig: GuildConfig,
+  reservedChannelIds: Readonly<Record<string, string>> = {},
 ): Promise<GlobalServerStructureResult> {
   const result: GlobalServerStructureResult = {
     categoriesCreated: [],
@@ -152,6 +153,27 @@ export async function ensureGlobalServerStructure(
     }
 
     for (const blueprint of categoryBlueprint.channels) {
+      const reservedId = reservedChannelIds[blueprint.name];
+      if (reservedId) {
+        const reserved = await guild.channels.fetch(reservedId);
+        if (reserved && reserved.type === blueprint.type) {
+          await reserved.setParent(category.id, { lockPermissions: false });
+          await reserved.permissionOverwrites.set(
+            buildOverwrites(
+              guild,
+              blueprint.access,
+              verifiedRoleId,
+              adminRoleId,
+              moderatorRoleId,
+              blueprint.readOnly ?? false,
+            ),
+            'COMCAVE-Plattform: globale Kanalstruktur',
+          );
+          result.channelsReused.push(blueprint.name);
+          continue;
+        }
+      }
+
       const existing = guild.channels.cache.find(
         (channel): channel is GuildBasedChannel =>
           channel.parentId === category.id && channel.name === blueprint.name && channel.type === blueprint.type,
