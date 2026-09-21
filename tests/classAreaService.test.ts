@@ -73,6 +73,11 @@ function fakeGuild(options: {
   createImpl?: (opts: FakeCreateOptions) => Promise<{ id: string }>;
   botPermissions?: Set<bigint>;
   sendImpl?: (channelId: string, text: string) => Promise<unknown>;
+  /** Kanal-IDs, deren ERSTER pin()-Aufruf mit DiscordAPIError 50013 fehlschlaegt (simuliert
+   * Discords reales Eventual-Consistency-Verhalten direkt nach dem Kanal-Anlegen - siehe
+   * pinWithRetry()-Kommentar in classAreaService.ts). Jeder weitere Aufruf fuer dieselbe ID
+   * gelingt. */
+  pinFailsOnce?: Set<string>;
 }): {
   guild: Guild;
   createCalls: FakeCreateOptions[];
@@ -142,6 +147,8 @@ function fakeGuild(options: {
     };
   }
 
+  const pinAttempts = new Map<string, number>();
+
   function fakeChannel(id: string) {
     if (existing.has(id) && !withoutBotAccess.has(id)) {
       overwriteState.set(id, new Map([['role-bot', new Set(ALL_RELEVANT_BOT_PERMISSIONS)]]));
@@ -155,6 +162,18 @@ function fakeGuild(options: {
         return {
           pin: vi.fn(async () => {
             pinCalls.push(id);
+            const attempt = (pinAttempts.get(id) ?? 0) + 1;
+            pinAttempts.set(id, attempt);
+            if (options.pinFailsOnce?.has(id) && attempt === 1) {
+              throw new DiscordAPIError(
+                { code: 50013, message: 'Missing Permissions' },
+                50013,
+                403,
+                'PUT',
+                `/channels/${id}/messages/pins/msg`,
+                { body: undefined, files: undefined },
+              );
+            }
           }),
         };
       }),
@@ -864,6 +883,32 @@ describe('classAreaService', () => {
 
       expect(second.sendCalls).toHaveLength(0);
     });
+
+    it(
+      'pinnt die Willkommensnachricht per Retry erfolgreich, wenn der erste Pin-Versuch ' +
+        'unmittelbar nach dem Kanal-Anlegen mit 403/50013 fehlschlaegt (echter Vorfall: Discord ' +
+        'lehnt das Anpinnen kurz nach dem Anlegen ab, obwohl der Bot ManageMessages sowohl als ' +
+        'Basis- als auch als frisch gesetztes Kanal-Overwrite-Recht besitzt - reine Eventual-' +
+        'Consistency, kein fehlendes Recht)',
+      async () => {
+        const { guildConfig, klasse } = await setupGuildAndClass();
+        const chatChannelId = fakeIdFor({ name: '💬-klassenchat', type: ChannelType.GuildText });
+        const { guild, pinCalls } = fakeGuild({
+          pinFailsOnce: new Set([chatChannelId]),
+        });
+
+        // Bewusst mit ECHTEN Timern statt vi.useFakeTimers(): Fake-Timer blockierten in der
+        // Praxis den parallel laufenden echten Prisma-I/O dieses Tests (Timeout nach 15s), da
+        // setupClassArea() zwischen dem Pin-Retry-Delay und dem Retry selbst noch reale
+        // Datenbankzugriffe fuer die naechsten Kanaele durchfuehrt. Die eine Sekunde und
+        // Halbe reale Wartezeit ist hier vernachlaessigbar gegenueber der Robustheit.
+        const result = await setupClassArea(guild, guildConfig, klasse, 'actor-1');
+
+        expect(result.channelsCreated).toHaveLength(7);
+        expect(pinCalls.filter((id) => id === chatChannelId)).toHaveLength(2);
+      },
+      5000,
+    );
 
     it('bricht das Setup nicht ab, wenn Senden/Anpinnen der Willkommensnachricht fehlschlaegt', async () => {
       const { guildConfig, klasse } = await setupGuildAndClass();

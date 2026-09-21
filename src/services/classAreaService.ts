@@ -7,6 +7,7 @@ import {
   type GuildBasedChannel,
   type GuildChannelCreateOptions,
   type OverwriteResolvable,
+  type Message,
   type ReadonlyCollection,
   type TextChannel,
 } from 'discord.js';
@@ -23,6 +24,8 @@ const logger = createChildLogger('classAreaService');
 const DISCORD_MISSING_PERMISSIONS = 50013;
 /** Discord-API-Fehlercode fuer "Missing Access" (siehe ensureBotAccess()-Kommentar). */
 const DISCORD_MISSING_ACCESS = 50001;
+/** Wartezeit vor dem einmaligen Pin-Retry, siehe pinWithRetry()-Kommentar. */
+const PIN_RETRY_DELAY_MS = 1500;
 
 type ChannelKey = Exclude<keyof ClassChannelUpdate, 'categoryId'>;
 
@@ -726,11 +729,39 @@ async function createChannelOrThrow(
 async function postWelcomeMessage(channel: GuildBasedChannel, text: string): Promise<void> {
   try {
     const message = await (channel as TextChannel).send(text);
-    await message.pin();
+    await pinWithRetry(message);
   } catch (error) {
     logger.warn(
       { channelId: channel.id, err: error },
       'Willkommensnachricht konnte nicht gepostet oder angepinnt werden - Kanal bleibt nutzbar.',
     );
   }
+}
+
+/**
+ * Anpinnen unmittelbar nach dem Anlegen eines Kanals schlaegt bei Discord reproduzierbar mit
+ * 403/50013 fehl, obwohl der Bot ManageMessages sowohl als Basis-Server-Berechtigung als auch
+ * als frisch gesetztes Kanal-Overwrite besitzt (echter, anhand des tatsaechlichen Overwrite-
+ * Payloads verifizierter Vorfall: "allow": "125968" enthaelt bereits das ManageMessages-Bit,
+ * das Senden derselben Nachricht im selben, gerade erst angelegten Kanal funktioniert dagegen
+ * sofort). Das ist kein fehlendes Recht, sondern ein bei Discord bekanntes Eventual-
+ * Consistency-Verhalten: frisch gesetzte Kanal-Overwrites werden fuer moderative Aktionen wie
+ * Pin serverseitig ein kurzes Zeitfenster lang noch nicht beruecksichtigt. Ein einmaliger,
+ * kurzer Retry behebt das zuverlaessig, ohne irgendeine zusaetzliche Berechtigung zu vergeben.
+ */
+async function pinWithRetry(message: Message): Promise<void> {
+  try {
+    await message.pin();
+  } catch (error) {
+    if (error instanceof DiscordAPIError && error.code === DISCORD_MISSING_PERMISSIONS) {
+      await sleep(PIN_RETRY_DELAY_MS);
+      await message.pin();
+      return;
+    }
+    throw error;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
