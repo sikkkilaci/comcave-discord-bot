@@ -459,7 +459,6 @@ export function buildOverwrites(
     PermissionFlagsBits.EmbedLinks,
     PermissionFlagsBits.AttachFiles,
     PermissionFlagsBits.ManageChannels,
-    PermissionFlagsBits.ManageWebhooks,
   ];
 
   const staffPermissions = [
