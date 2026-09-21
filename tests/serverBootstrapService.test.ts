@@ -31,8 +31,11 @@ interface FakeChannel {
   id: string;
   name: string;
   type: ChannelType;
+  parentId: string | null;
   send: ReturnType<typeof vi.fn>;
   messages: { fetch: ReturnType<typeof vi.fn> };
+  setParent: ReturnType<typeof vi.fn>;
+  permissionOverwrites: { set: ReturnType<typeof vi.fn> };
 }
 
 interface FakeCreatedRoleOptions {
@@ -43,6 +46,7 @@ interface FakeCreatedRoleOptions {
 interface FakeCreatedChannelOptions {
   name: string;
   type: ChannelType;
+  parent?: string;
   permissionOverwrites?: Array<{ id: string; allow?: bigint[]; deny?: bigint[] }>;
 }
 
@@ -76,12 +80,18 @@ function toReceivedComponents(
   }));
 }
 
-function makeFakeChannel(id: string, name: string, type: ChannelType): FakeChannel {
+function makeFakeChannel(
+  id: string,
+  name: string,
+  type: ChannelType,
+  parentId: string | null = null,
+): FakeChannel {
   const messages: FakeMessage[] = [];
-  return {
+  const channel: FakeChannel = {
     id,
     name,
     type,
+    parentId,
     send: vi.fn(
       async (payload: {
         components?: Array<{
@@ -99,7 +109,15 @@ function makeFakeChannel(id: string, name: string, type: ChannelType): FakeChann
     messages: {
       fetch: vi.fn(async () => new Collection(messages.map((m) => [m.id, m]))),
     },
+    setParent: vi.fn(async (newParentId: string) => {
+      channel.parentId = newParentId;
+      return channel;
+    }),
+    permissionOverwrites: {
+      set: vi.fn(async () => channel),
+    },
   };
+  return channel;
 }
 
 function fakeGuild(options: {
@@ -150,12 +168,17 @@ function fakeGuild(options: {
 
   const channelsCreate = vi.fn(async (opts: FakeCreatedChannelOptions) => {
     channelCreateCalls.push(opts);
-    if (options.createChannelImpl) return options.createChannelImpl(opts);
+    if (options.createChannelImpl) {
+      const channel = await options.createChannelImpl(opts);
+      channels.set(channel.id, channel);
+      return channel;
+    }
     channelCounter += 1;
     const channel = makeFakeChannel(
       `channel-${guildId}-${channelCounter}-${opts.name}`,
       opts.name,
       opts.type,
+      opts.parent ?? null,
     );
     channels.set(channel.id, channel);
     return channel;
@@ -174,7 +197,7 @@ function fakeGuild(options: {
   // permissions.has() liefert immer true: diese Tests decken den Bootstrap-Ablauf ab, nicht die
   // Overwrite-Berechtigungspruefung aus classAreaService.ts (siehe dortige eigene Tests dafuer).
   const me = {
-    roles: { highest: { position: botTopRolePosition } },
+    roles: { highest: { id: 'role-bot', position: botTopRolePosition } },
     permissions: { has: () => true },
   };
 
@@ -188,6 +211,9 @@ function fakeGuild(options: {
     channels: {
       create: channelsCreate,
       fetch: channelsFetch,
+      get cache(): Collection<string, FakeChannel> {
+        return new Collection(Array.from(channels.entries()));
+      },
     },
     members: {
       me,
@@ -237,8 +263,11 @@ describe('serverBootstrapService', () => {
         expect(call.permissions).toEqual([]);
       }
 
-      // 3 globale Kanaele + 3 x (1 Kategorie + 7 Kanaele) = 27.
-      expect(channelCreateCalls).toHaveLength(27);
+      // 3 globale Kanaele + 3 x (1 Kategorie + 7 Kanaele) = 27, plus die globale
+      // COMCAVE-Plattformstruktur (ensureGlobalServerStructure): 8 Kategorien + 28 neue
+      // Kanaele (31 Kanaele in der Struktur, davon 3 - Verifizierung/wo-bin-ich/Log -
+      // wiederverwendet statt neu angelegt) = 36. Gesamt 27 + 36 = 63.
+      expect(channelCreateCalls).toHaveLength(63);
 
       const guildConfig = await getOrCreateGuildConfig(guild.id);
       expect(guildConfig.verifiedRoleId).toBe(result.verifiedRole.id);

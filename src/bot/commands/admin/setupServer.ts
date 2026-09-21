@@ -1,10 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
-import {
-  bootstrapServer,
-  type BootstrapResult,
-} from '../../../services/serverBootstrapService.js';
+import { bootstrapServer, type BootstrapResult } from '../../../services/serverBootstrapService.js';
 import { CLASS_NAMES } from '../../../types/domain.js';
 
 function formatObject(label: string, obj: { id: string; created: boolean }): string {

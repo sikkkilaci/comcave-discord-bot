@@ -28,7 +28,10 @@ import { roleHasAdministrator } from '../bot/discordHelpers.js';
 import { ValidationError } from '../utils/errors.js';
 import { CLASS_NAMES, type ClassName } from '../types/domain.js';
 import { createChildLogger } from '../utils/logger.js';
-import { ensureGlobalServerStructure, type GlobalServerStructureResult } from './globalServerStructureService.js';
+import {
+  ensureGlobalServerStructure,
+  type GlobalServerStructureResult,
+} from './globalServerStructureService.js';
 
 const logger = createChildLogger('serverBootstrapService');
 
