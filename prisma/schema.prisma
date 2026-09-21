@@ -106,13 +106,13 @@ model Member {
 /// damit ein veralteter Standort keine bestehende Member-Zuordnung zerstoert
 /// (siehe onDelete: SetNull oben).
 model ComcaveLocation {
-  id         String   @id @default(cuid())
-  code       String   @unique // stabiler externer Schluessel aus der Quelldatei, fuer idempotenten Import
+  id         String  @id @default(cuid())
+  code       String  @unique // stabiler externer Schluessel aus der Quelldatei, fuer idempotenten Import
   name       String // Standortname, z. B. "COMCAVE Koeln"
   state      String // Bundesland, z. B. "Nordrhein-Westfalen"
   city       String
   postalCode String? // optional: nicht fuer jeden offiziellen Standort oeffentlich verifizierbar
-  isActive   Boolean  @default(true)
+  isActive   Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -428,6 +428,45 @@ model CourseUpcomingNotification {
   notifiedAt DateTime @default(now())
 
   @@index([guildId, classId])
+}
+
+/// Katalog der Kursinhalte je Kursnummer, aus einer versionierten
+/// eCampus-Kursinhalte-Quelle importiert (siehe
+/// src/services/courseContentImportService.ts). Bewusst GLOBAL wie
+/// ComcaveLocation, NICHT guild-/klassen-gescoped: der Inhalt eines Kurses
+/// (z. B. Kursnummer "567469") ist ein von Klasse/Guild unabhaengiger Fakt -
+/// dieselbe Kursnummer kann in mehreren Klassen/Guilds als CourseEntry mit
+/// unterschiedlichem Start-/Enddatum auftauchen, ohne dass sich der Inhalt
+/// aendert. Verknuepfung zu CourseEntry erfolgt bewusst NUR lose ueber den
+/// gemeinsamen Wert `courseNumber`/`CourseEntry.courseNumber` (kein FK) -
+/// ein CourseEntry existiert erst nach einem separaten, unabhaengigen
+/// Kursplan-Import und CourseEntry ist pro Klasse dupliziert, waehrend der
+/// Inhalt genau einmal global gilt. `courseTitle` ist bewusst hier redundant
+/// gespeichert, damit Inhalte auch fuer Kurse anzeigbar sind, fuer die (noch)
+/// kein CourseEntry importiert wurde. Start-/Enddatum aus der Kursinhalte-
+/// Quelle werden bewusst NICHT gespeichert - Terminplanung bleibt exklusiv
+/// Aufgabe von CourseEntry (siehe data/course-plans/README.md), damit keine
+/// zweite, potenziell abweichende Datumsquelle entsteht.
+model CourseContentItem {
+  id           String @id @default(cuid())
+  courseNumber String // = courseId aus der Kursinhalte-Quelle
+  courseTitle  String // Kurstitel aus der Quelle (Redundanz fuer Anzeige ohne vorhandenen CourseEntry)
+
+  orderIndex Int // 0-basierte Position innerhalb des Kurses - erhaelt die Reihenfolge aus der Quelle
+  numberPath String // hierarchischer Nummern-Pfad, deterministisch aus der Quell-Nummerierung rekonstruiert, z. B. "1.2.3"
+  level      Int // Hierarchieebene von numberPath (1 = oberste Ebene), denormalisiert fuer Anzeige/Abfrage ohne String-Parsing
+  text       String // Inhaltstext ohne die fuehrende Nummerierung, unveraendert aus der Quelle uebernommen
+
+  sourceFile String // Pfad der versionierten Quelldatei, fuer Nachvollziehbarkeit
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Verhindert Duplikate bei wiederholtem Import: derselbe Kurs + dieselbe
+  // Position wird erkannt und aktualisiert statt neu angelegt (siehe
+  // replaceCourseContentForCourse() in courseContentRepository.ts).
+  @@unique([courseNumber, orderIndex])
+  @@index([courseNumber])
 }
 
 /// Temporaere, klassenbezogene Lern-/Arbeitsgruppe (nicht zu verwechseln mit der

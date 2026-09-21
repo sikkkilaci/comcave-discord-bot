@@ -107,6 +107,9 @@ Faustregeln:
   `CourseAcknowledgment`: Kenntnisnahme eines Mitglieds fuer einen Kurs-Slot.
   `CourseUpcomingNotification`: Marker fuer bereits gesendete 7-Tage-Hinweise. Siehe "Kursplan"
   unten.
+- `CourseContentItem`: Katalog der Kursinhalte je Kursnummer, bewusst GLOBAL wie `ComcaveLocation`
+  (nicht guild-/klassen-gescoped) und nur lose ueber `courseNumber` mit `CourseEntry` verknuepft
+  (kein FK). Siehe "Kursinhalte" unten.
 - `StudyGroup`: temporaere Lerngruppe einer Klasse (Name, Ersteller, aktiv/geschlossen, optionales
   Teilnehmerlimit). `StudyGroupMember`: Mitgliedschaft eines Discord-Nutzers in einer Gruppe. Siehe
   "Lerngruppen" unten.
@@ -912,6 +915,37 @@ Design-Entscheidungen:
   taeglicher `setInterval()`-Check) waere lokal auf `ready.ts`/`coursePlanNotificationService.ts`
   begrenzt.
 
+### Kursinhalte
+
+Ergaenzt den Kursplan (oben) um die eigentlichen Lerninhalte je Kurs, importiert aus
+`data/course-plans/kursinhalte.json` (strukturierte Extraktion des eCampus-Kursinhalte-PDFs - siehe
+`data/course-plans/README.md` fuer Quelle, Erhebungsmethode und den Grund, warum das Roh-PDF nicht
+als Laufzeitquelle dient).
+
+- **Datenmodell:** neues Modell `CourseContentItem` (siehe "Datenmodell" oben) - bewusst **global**
+  wie `ComcaveLocation`, nicht guild-/klassen-gescoped, da der Inhalt eines Kurses ein von
+  Klasse/Guild unabhaengiger Fakt ist. Ein Row je einzelnem, nummerierten Inhaltseintrag (nicht ein
+  JSON-Blob pro Kurs) - `orderIndex`/`numberPath`/`level` erhalten Reihenfolge und hierarchische
+  Struktur aus der Quelle.
+- **Hierarchie-Rekonstruktion:** Die Quelle nummeriert jede Ebene fuer sich neu beginnend bei 1 (kein
+  durchgehender Pfad im Rohtext) - `reconstructCourseContentHierarchy()` in
+  `courseContentImportService.ts` leitet die tatsaechliche Tiefe deterministisch aus der Zahlenfolge
+  her (fortlaufende Zahl = Geschwisterknoten derselben Ebene, Zahl 1 nach einem tieferen/gleichen
+  Knoten = neue tiefere Ebene) und wurde gegen alle 592 Eintraege der realen Quelldatei verifiziert.
+- **Verknuepfung zum Kursplan bewusst nur lose ueber `courseNumber`, kein FK** - `CourseEntry` wird
+  pro Klasse/Guild dupliziert (dieselbe Kursnummer kann in mehreren Klassen mit unterschiedlichem
+  Start-/Enddatum auftauchen), waehrend der Inhalt genau einmal global gilt. `courseContentService.ts`
+  stellt `getCourseContentForEntry(entry)` sowie `getCourseContentByCourseNumber(...)` bereit.
+- **Start-/Enddatum werden nicht in `CourseContentItem` gespeichert** - Terminplanung bleibt exklusiv
+  Aufgabe von `CourseEntry`, damit keine zweite, potenziell abweichende Datumsquelle entsteht.
+- **Import idempotent per Kurs-Ersetzung:** `replaceCourseContentForCourse()` ersetzt pro Kurs den
+  kompletten Eintragsbestand (loeschen, was nicht mehr in der Quelle steht; upsert per
+  `[courseNumber, orderIndex]`) - anders als beim Standort-Katalog unbedenklich, da kein anderes
+  Modell per FK auf `CourseContentItem.id` verweist. CLI: `npm run kursinhalte:import`.
+- **Noch keine Discord-UI/-Commands** (bewusst, siehe Aufgabenstellung) - Daten sind bereits ueber die
+  Service-Schicht abrufbar und fuer eine spaetere Erweiterung von `/kursplan` bzw. einen neuen Befehl
+  vorbereitet, ohne dass Repository/Service sich dafuer aendern muessten.
+
 ### Lerngruppen
 
 Sechste klassenbezogene Fachfunktion: temporaere Lern-/Arbeitsgruppen innerhalb einer Klasse
@@ -1165,6 +1199,12 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
     `/regelwerk-aktualisieren` erstmalig konfiguriert werden - ohne aktives `RuleSet` bleibt der
     Eintrittsflow an dieser Stelle mit einer verstaendlichen Fehlermeldung stehen (bewusst
     fail-closed, kein stillschweigendes Ueberspringen).
+21. ~~**Kursinhalte (eCampus-PDF-Extraktion)**~~ - **umgesetzt** (Datenmodell + Import + Service-
+    Schicht). Siehe Abschnitt ["Kursinhalte" im README](./README.md#kursinhalte) sowie "Kursinhalte"
+    oben: globaler Katalog (`CourseContentItem`), 34 Kurse/592 Inhaltseintraege aus
+    `data/course-plans/kursinhalte.json`, Verknuepfung zum Kursplan lose ueber `courseNumber`.
+    Bewusst noch OHNE eigene Discord-UI/-Commands - `courseContentService.ts` ist bereits als
+    Einstiegspunkt fuer eine spaetere `/kursplan`-Erweiterung vorbereitet.
 
 Jede dieser Funktionen wird als eigener, in sich getesteter Arbeitsschritt umgesetzt, um das
 Projekt durchgehend in einem lauffaehigen Zustand zu halten.

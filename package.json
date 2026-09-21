@@ -14,6 +14,7 @@
     "deploy-commands": "tsx src/bot/handlers/deployCommands.ts",
     "course-plan:import": "tsx src/scripts/importCoursePlan.ts",
     "standorte:import": "tsx src/scripts/importLocations.ts",
+    "kursinhalte:import": "tsx src/scripts/importCourseContent.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

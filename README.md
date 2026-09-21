@@ -352,6 +352,24 @@ Kurs innerhalb der naechsten 7 Tage beginnt, und postet in dem Fall einen Hinwei
 Klassen-Ankuendigungen (`Class.announcementChannelId`, falls konfiguriert). Pro Kurs+Klasse wird das
 nur einmal ausgeloest (per DB-Constraint) - wiederholte Bot-Starts erzeugen keine doppelten Hinweise.
 
+### Kursinhalte
+
+Zusaetzlich zum Zeitplan (oben) gibt es einen separaten, globalen Katalog der eigentlichen
+**Lerninhalte** je Kurs (`CourseContentItem`), importiert aus `data/course-plans/kursinhalte.json`
+(strukturierte Extraktion des eCampus-Kursinhalte-PDFs - Quelle, Datenmodell und die Verknuepfung
+zum Kursplan sind in `data/course-plans/README.md` dokumentiert). Verknuepfung zum Kursplan erfolgt
+ausschliesslich ueber die gemeinsame Kursnummer (`courseNumber`), nicht per Fremdschluessel, da ein
+Kurs-Slot (`CourseEntry`) pro Klasse dupliziert wird, waehrend der Inhalt genau einmal global gilt.
+
+- Reproduzierbarer CLI-Import: `npm run kursinhalte:import`.
+- Noch OHNE eigene Discord-UI/-Commands (bewusst, siehe Aufgabenstellung) - die Daten sind bereits
+  ueber `src/services/courseContentService.ts` (`getCourseContentForEntry()`/
+  `getCourseContentByCourseNumber()`) abrufbar und fuer eine spaetere Erweiterung von `/kursplan`
+  vorbereitet.
+- Enthaelt aktuell **34 Kurse** und **592 hierarchisch nummerierte Inhaltseintraege** (9 Kurse ohne
+  Inhalte in der Quelle - z. B. Betriebliche Praxisphasen - bleiben konsequent ohne Eintraege statt
+  kuenstlich aufgefuellt zu werden).
+
 ## Lerngruppen
 
 Temporaere, klassenbezogene Lern-/Arbeitsgruppen (nicht zu verwechseln mit der "Lerngruppe" im Sinne
