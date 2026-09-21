@@ -156,7 +156,12 @@ export async function ensureGlobalServerStructure(
       const reservedId = reservedChannelIds[blueprint.name];
       if (reservedId) {
         const reserved = await guild.channels.fetch(reservedId);
-        if (reserved && reserved.type === blueprint.type) {
+        if (
+          reserved &&
+          reserved.type === blueprint.type &&
+          'setParent' in reserved &&
+          'permissionOverwrites' in reserved
+        ) {
           await reserved.setParent(category.id, { lockPermissions: false });
           await reserved.permissionOverwrites.set(
             buildOverwrites(
