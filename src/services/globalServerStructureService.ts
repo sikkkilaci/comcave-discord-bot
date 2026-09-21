@@ -403,7 +403,7 @@ export async function ensureGlobalServerStructure(
   return result;
 }
 
-function buildOverwrites(
+export function buildOverwrites(
   guild: Guild,
   access: Access,
   verifiedRoleId: string,
@@ -441,14 +441,6 @@ function buildOverwrites(
     overwrites.push({
       id: guild.roles.everyone.id,
       deny: [PermissionFlagsBits.ViewChannel],
-    });
-    overwrites.push({
-      id: adminRoleId,
-      allow: memberWrite,
-    });
-    overwrites.push({
-      id: moderatorRoleId,
-      allow: memberWrite,
     });
   }
 
