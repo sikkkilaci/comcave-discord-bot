@@ -1047,6 +1047,60 @@ tatsaechlich einzusehen - nur direkter Datenbankzugriff. Das Review hat das gesc
   Eintrag im Projekt bereits mitfuehrt), statt eine neue Spalte oder Relation dafuer anzulegen.
 - `/audit-log seite:<...> aktion:<...> nutzer:<...>` (`src/bot/commands/admin/auditLog.ts`, ADMIN).
 
+### Server-Bootstrap
+
+`/setup-klassen`/`/setup-verifizierung`/`/setup-admin-rollen` verlangten bislang jeweils bereits
+existierende Discord-Rollen/-Kanaele als Parameter (Discords `RoleOption`/`ChannelOption`-Typen
+lassen technisch gar nichts anderes zu - der Admin waehlt zwingend aus bestehenden Objekten). Fuer
+einen komplett neuen, leeren Testserver bedeutete das siebenfaches manuelles Vorab-Anlegen von
+Rollen/Kanaelen in Discord, bevor der erste Setup-Befehl ueberhaupt lief. `/setup-server`
+(`src/services/serverBootstrapService.ts`, `src/bot/commands/admin/setupServer.ts`) schliesst diese
+Luecke, indem es **ausschliesslich bereits bestehende Services orchestriert** statt eine
+Parallelarchitektur zu bauen:
+
+- **Rollen/Kanaele finden-oder-anlegen** (`ensureManagedRole()`/`ensureTextChannel()`): zuerst per
+  in `GuildConfig`/`Class` gespeicherter ID (Selbstheilung wie bei `classLeadService.ts`, falls die
+  ID nicht mehr aufloesbar ist), sonst per exaktem Namensabgleich unter allen Rollen/Kanaelen des
+  Servers (deckt den Fall ab, dass ein Admin sie bereits manuell mit dem erwarteten Namen angelegt
+  hat), erst dann Neuanlage - nie werden vorhandene Objekte umbenannt, veraendert oder geloescht.
+  Feste Namen (`Verifiziert`/`Admin`/`Moderator`/`Klasse A/B/C`/`verifizierung`/`wo-bin-ich`/
+  `bot-log`) uebernehmen wortwoertlich die Begriffe, die README.md/ARCHITECTURE.md fuer diese
+  Rollen/Kanaele bereits durchgaengig verwenden.
+- **Private Klassenbereiche**: ruft nach dem Setzen der Klassenrollen direkt `setupClassArea()`
+  (`classAreaService.ts`) auf - identischer Code-Pfad wie `/setup-klassenbereiche "alle Klassen"`,
+  keine zweite Kanal-/Overwrite-Logik.
+- **Admin-/Moderator-Rolle**: persistiert ueber das bestehende `configureAdminRoles()`
+  (`guildConfigService.ts`), das seine eigene Administrator-Rechte-Pruefung und sein eigenes
+  Audit-Log bereits mitbringt.
+- **Fail-closed vor jeder Persistierung:** alle sechs verwalteten Rollen (Verifiziert/Admin/
+  Moderator/Klasse A/B/C) werden auf Administrator-Rechte geprueft, **bevor** irgendetwas in der DB
+  geschrieben wird - ein Verstoss (z. B. eine bereits manuell mit Admin-Rechten angelegte Rolle mit
+  passendem Namen) bricht den gesamten Bootstrap ab, statt einen halb konfigurierten Server zu
+  hinterlassen.
+- **Nachrichten-Idempotenz ohne neues Datenmodell:** vor dem Posten der Verifizierungs-/
+  #wo-bin-ich-Nachricht scannt `channelHasMatchingMessage()` die letzten 20 Nachrichten des Kanals
+  auf eine bereits vorhandene Nachricht mit dem passenden Button (`VERIFY_BUTTON_CUSTOM_ID`/
+  `CLASS_SELECT_CUSTOM_ID_PREFIX`) - deckt sowohl "Kanal gerade neu angelegt" als auch "Kanal
+  existierte schon, aber ohne Nachricht" korrekt ab, ohne dafuer ein neues "wurde schon gepostet"-
+  Feld einzufuehren.
+- **Race Conditions:** ein In-Process-Lock (`Set<guildId>`) verweigert einen zweiten parallelen
+  `/setup-server`-Aufruf fuer denselben Server mit einer klaren Fehlermeldung, statt zwei
+  gleichzeitige Laeufe doppelte Rollen/Kanaele anlegen zu lassen (Discord bietet kein atomares
+  "nur anlegen, falls nicht vorhanden"). Schuetzt nur innerhalb dieses Bot-Prozesses - ausreichend,
+  da das Deployment genau eine Bot-Instanz betreibt.
+- **Bot-Rollenposition/Konsistenzpruefung:** am Ende nicht-blockierende Warnungen, falls die
+  hoechste Bot-Rolle nicht ueber den verwalteten Rollen steht (spaetere Rollenzuweisung wuerde sonst
+  mit Discord-Fehlercode 50013 fehlschlagen) oder falls die DB nach dem Bootstrap unerwarteterweise
+  noch Luecken aufweist.
+- **Log-Kanal** (`GuildConfig.logChannelId`) wird angelegt und mit `@everyone`-ViewChannel-Deny +
+  Admin-Allow-Overwrite versehen, bleibt aber wie `moderatorRoleId` bewusst **ohne Schreib-Logik** -
+  nichts im Projekt postet aktuell dorthin; das Feld existierte bereits im Schema, der Bootstrap
+  fuellt es nur.
+
+`/setup-server` ersetzt keinen der granularen Einzel-Befehle (die bleiben fuer gezielte
+Nachkonfiguration/Reparatur einzelner Rollen/Kanaele nutzbar) und fuehrt keine neue fachliche
+Logik ein - es verbindet ausschliesslich bereits vorhandene, einzeln getestete Bausteine.
+
 ## Sicherheitsueberlegungen
 
 - Keine Zugangsdaten im Repository (`.env` ignoriert, nur `.env.example` mit Platzhaltern).
@@ -1205,6 +1259,12 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
     `data/course-plans/kursinhalte.json`, Verknuepfung zum Kursplan lose ueber `courseNumber`.
     Bewusst noch OHNE eigene Discord-UI/-Commands - `courseContentService.ts` ist bereits als
     Einstiegspunkt fuer eine spaetere `/kursplan`-Erweiterung vorbereitet.
+22. ~~**Zentraler Server-Bootstrap (`/setup-server`)**~~ - **umgesetzt.** Siehe Abschnitt
+    ["Server-Bootstrap" im README](./README.md#-server-bootstrap-setup-server) sowie
+    "Server-Bootstrap" oben: orchestriert ausschliesslich bereits bestehende Services
+    (`configureAdminRoles()`, `classAreaService.ts`, `updateGuildConfig()`/`updateClassRole()`),
+    keine neue Parallelarchitektur. Ersetzt keinen der granularen Einzel-Befehle, deckt aber den
+    "leerer Testserver" Sonderfall in einem Aufruf ab.
 
 Jede dieser Funktionen wird als eigener, in sich getesteter Arbeitsschritt umgesetzt, um das
 Projekt durchgehend in einem lauffaehigen Zustand zu halten.

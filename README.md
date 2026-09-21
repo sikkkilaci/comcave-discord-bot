@@ -23,6 +23,38 @@ Gate-Funktion abgesichert (`assertMemberVerified()` → `assertProfileComplete()
 `/onboarding`) umgangen werden kann - siehe `src/services/memberJourneyService.ts` fuer die
 zentrale "welcher Schritt kommt als naechstes"-Logik.
 
+## 🚀 Server-Bootstrap (`/setup-server`)
+
+Fuer einen neuen, leeren Testserver muss nicht mehr jede Rolle/jeder Kanal manuell in Discord
+angelegt und einzeln per `/setup-verifizierung`/`/setup-klassen`/`/setup-admin-rollen` referenziert
+werden: `/setup-server` (ADMIN, keine Parameter) richtet in einem Vorgang die komplette
+Grundstruktur ein, indem es dieselben bestehenden Services orchestriert:
+
+- **Rollen** (Verifiziert, Admin, Moderator, Klasse A/B/C) - werden per gespeicherter ID, sonst
+  per exaktem Namensabgleich wiederverwendet, sonst neu angelegt (immer ohne Basis-Berechtigung).
+- **Globale Kanaele** (`verifizierung`, `wo-bin-ich`, `bot-log`) - ebenso wiederverwendet oder neu
+  angelegt; der Log-Kanal ist fuer `@everyone` unsichtbar und nur fuer die Admin-Rolle sichtbar.
+- **Private Klassenbereiche** fuer A/B/C ueber den bestehenden `classAreaService.ts` (Kategorie +
+  7 Kanaele je Klasse, siehe "Private Klassenbereiche" unten) - keine eigene Kanal-Logik.
+- **GuildConfig/Klassenkonfiguration** ueber die bestehenden Repositories/Services
+  (`configureAdminRoles()`, `updateGuildConfig()`, `updateClassRole()`).
+- **Dauerhafte Nachrichten** (Verifizierungs-Button, #wo-bin-ich-Klassenauswahl) - werden nur
+  gepostet, wenn im jeweiligen Kanal noch keine passende Nachricht existiert (kein Duplikat bei
+  wiederholter Ausfuehrung oder bei einem bereits manuell vorbereiteten Kanal).
+
+Vollstaendig idempotent: ein wiederholter Aufruf legt nichts doppelt an, loescht nichts
+Bestehendes und aktualisiert nur, was noch fehlt. Ein Admin, der schon einzelne Rollen/Kanaele
+manuell mit dem erwarteten Namen angelegt hat, kann `/setup-server` trotzdem gefahrlos ausfuehren -
+diese werden erkannt und wiederverwendet statt dupliziert. Die Antwort listet fuer jede Rolle/
+jeden Kanal, ob sie neu angelegt oder wiederverwendet wurde, sowie etwaige Hinweise (z. B. falls
+die Bot-Rolle in der Rollenhierarchie zu niedrig steht, um spaeter Rollen zuzuweisen). Siehe
+`src/services/serverBootstrapService.ts`.
+
+Die granularen Einzel-Befehle (`/setup-verifizierung`, `/setup-klassen`, `/setup-admin-rollen`,
+`/setup-klassenbereiche`) bleiben unveraendert fuer die gezielte Nachkonfiguration einzelner
+Rollen/Kanaele erhalten - `/setup-server` ersetzt sie nicht, sondern deckt den "kompletter Server
+von null" Sonderfall ab, ohne deren Vertrag zu aendern.
+
 ## Verifizierung
 
 Ablauf:

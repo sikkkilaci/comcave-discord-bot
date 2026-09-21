@@ -59,6 +59,7 @@ describe('commandLoader', () => {
       'regelwerk-status': PermissionLevel.ADMIN,
       'mitglied-profil-bearbeiten': PermissionLevel.ADMIN,
       'setup-standorte-importieren': PermissionLevel.ADMIN,
+      'setup-server': PermissionLevel.ADMIN,
     };
 
     for (const [name, level] of Object.entries(expected)) {
