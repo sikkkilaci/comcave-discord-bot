@@ -1,6 +1,7 @@
 import {
   ChannelType,
   PermissionFlagsBits,
+  type CategoryChannel,
   type Guild,
   type GuildBasedChannel,
   type OverwriteResolvable,
@@ -132,8 +133,8 @@ export async function ensureGlobalServerStructure(
   }
 
   for (const categoryBlueprint of STRUCTURE) {
-    let category = guild.channels.cache.find(
-      (channel): channel is GuildBasedChannel =>
+    let category: CategoryChannel | undefined = guild.channels.cache.find(
+      (channel): channel is CategoryChannel =>
         channel.type === ChannelType.GuildCategory && channel.name === categoryBlueprint.name,
     );
 
