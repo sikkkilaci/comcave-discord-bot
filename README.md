@@ -87,9 +87,12 @@ ist ein realer, serverunabhaengiger Fakt (anders als Klasse A/B/C, die pro Disco
 angelegt werden). Die Zuordnung eines Mitglieds zu einem Standort (`Member.locationId`) bleibt
 dagegen ganz normal guild-/mitgliedsgebunden.
 
-- Noch **keine echten Standortdaten** enthalten - die Quelldatei
-  (`data/locations/comcave-standorte.json`, Format siehe `data/locations/README.md`) muss von der
-  Administration mit der offiziellen Liste befuellt werden.
+- Die Quelldatei (`data/locations/comcave-standorte.json`) enthaelt einen verifizierten Teilbestand
+  von 110 echten COMCAVE-Standorten (Stadt + Bundesland, teils PLZ), ausschliesslich von
+  [comcave.de/standorte](https://www.comcave.de/standorte) stammend - **keine** erfundenen oder aus
+  Drittquellen ergaenzten Daten. Quelle, Erhebungsstand und Grenzen der Abdeckung (noch nicht alle
+  300+ offiziellen Standorte) sind in `data/locations/README.md` dokumentiert; die Administration kann
+  die Liste jederzeit um weitere offiziell verifizierte Standorte ergaenzen.
 - Import/Aktualisierung ohne Codeaenderung: `/setup-standorte-importieren` (nur Admins) oder
   `npm run standorte:import`. Beide Wege sind idempotent (Upsert ueber einen stabilen `code`) und
   deaktivieren (nicht loeschen) Standorte, die in einer aktualisierten Datei fehlen - bestehende

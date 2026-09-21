@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   countActiveLocations,
   deactivateLocationsNotIn,
+  formatLocationLabel,
   getLocationById,
   searchActiveLocations,
   upsertLocation,
@@ -20,6 +21,7 @@ describe('locationRepository', () => {
       const { location, created } = await upsertLocation({
         code,
         name: 'COMCAVE Testhausen',
+        state: 'Teststate',
         city: 'Testhausen',
         postalCode: '12345',
       });
@@ -34,6 +36,7 @@ describe('locationRepository', () => {
       await upsertLocation({
         code,
         name: 'COMCAVE Alt',
+        state: 'Teststate',
         city: 'Alt-Stadt',
         postalCode: '11111',
       });
@@ -41,6 +44,7 @@ describe('locationRepository', () => {
       const { location, created } = await upsertLocation({
         code,
         name: 'COMCAVE Neu',
+        state: 'Teststate',
         city: 'Neu-Stadt',
         postalCode: '22222',
       });
@@ -55,12 +59,19 @@ describe('locationRepository', () => {
 
     it('reaktiviert einen zuvor deaktivierten Standort bei erneutem Import', async () => {
       const code = uniqueCode();
-      await upsertLocation({ code, name: 'COMCAVE X', city: 'X-Stadt', postalCode: '99999' });
+      await upsertLocation({
+        code,
+        name: 'COMCAVE X',
+        state: 'Teststate',
+        city: 'X-Stadt',
+        postalCode: '99999',
+      });
       await deactivateLocationsNotIn([]);
 
       const { location } = await upsertLocation({
         code,
         name: 'COMCAVE X',
+        state: 'Teststate',
         city: 'X-Stadt',
         postalCode: '99999',
       });
@@ -73,8 +84,20 @@ describe('locationRepository', () => {
     it('deaktiviert nur Standorte, deren code nicht in der Liste enthalten ist', async () => {
       const keep = uniqueCode();
       const drop = uniqueCode();
-      await upsertLocation({ code: keep, name: 'Bleibt', city: 'Stadt', postalCode: '11111' });
-      await upsertLocation({ code: drop, name: 'Faellt weg', city: 'Stadt', postalCode: '22222' });
+      await upsertLocation({
+        code: keep,
+        name: 'Bleibt',
+        state: 'Teststate',
+        city: 'Stadt',
+        postalCode: '11111',
+      });
+      await upsertLocation({
+        code: drop,
+        name: 'Faellt weg',
+        state: 'Teststate',
+        city: 'Stadt',
+        postalCode: '22222',
+      });
 
       const deactivatedCount = await deactivateLocationsNotIn([keep]);
 
@@ -92,6 +115,7 @@ describe('locationRepository', () => {
       await upsertLocation({
         code,
         name: 'COMCAVE Suchhausen',
+        state: 'Teststate',
         city: 'Suchstadt',
         postalCode: '54321',
       });
@@ -107,6 +131,7 @@ describe('locationRepository', () => {
       await upsertLocation({
         code,
         name: 'COMCAVE Inaktiv',
+        state: 'Teststate',
         city: 'Inaktivstadt',
         postalCode: '00000',
       });
@@ -123,6 +148,7 @@ describe('locationRepository', () => {
         await upsertLocation({
           code: uniqueCode(),
           name: `${prefix}-${i}`,
+          state: 'Teststate',
           city: 'Stadt',
           postalCode: '11111',
         });
@@ -144,11 +170,49 @@ describe('locationRepository', () => {
       await upsertLocation({
         code: uniqueCode(),
         name: 'COMCAVE Zaehltest',
+        state: 'Teststate',
         city: 'Zaehlstadt',
         postalCode: '77777',
       });
 
       expect(await countActiveLocations()).toBe(before + 1);
+    });
+  });
+
+  describe('Standorte ohne verifizierte PLZ (postalCode optional)', () => {
+    it('legt einen Standort ohne postalCode an und findet ihn ueber Name/Stadt/Bundesland', async () => {
+      const code = uniqueCode();
+      const uniqueCity = `Ohneplzstadt-${randomUUID()}`;
+
+      const { location } = await upsertLocation({
+        code,
+        name: `COMCAVE ${uniqueCity}`,
+        state: 'Testbundesland',
+        city: uniqueCity,
+      });
+
+      expect(location.postalCode).toBeNull();
+      expect(await searchActiveLocations(uniqueCity)).toHaveLength(1);
+      expect(await searchActiveLocations('Testbundesland')).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code })]),
+      );
+    });
+
+    it('formatLocationLabel zeigt die PLZ nur an, wenn sie gesetzt ist', async () => {
+      const code = uniqueCode();
+      const uniqueCity = `Labeltest-${randomUUID()}`;
+      const { location } = await upsertLocation({
+        code,
+        name: `COMCAVE ${uniqueCity}`,
+        state: 'Testbundesland',
+        city: uniqueCity,
+      });
+
+      const label = formatLocationLabel(location);
+
+      expect(label).not.toContain('null');
+      expect(label).toContain(uniqueCity);
+      expect(label).toContain('Testbundesland');
     });
   });
 });

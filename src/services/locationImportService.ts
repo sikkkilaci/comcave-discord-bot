@@ -16,10 +16,11 @@ import type { GuildMember } from 'discord.js';
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * Standard-Pfad der Standort-Quelldatei (repo-relativ). Noch KEINE echten
- * COMCAVE-Standortdaten enthalten - die Datei muss von der Administration mit
- * der offiziellen Liste befuellt werden, bevor ein Import sinnvolle Daten
- * liefert (siehe data/locations/README.md fuer das erwartete Format).
+ * Standard-Pfad der Standort-Quelldatei (repo-relativ). Enthaelt einen
+ * verifizierten Teilbestand echter COMCAVE-Standorte (Quelle, Stand und
+ * Grenzen der Erhebung siehe data/locations/README.md); die Liste kann von
+ * der Administration jederzeit um weitere offiziell verifizierte Standorte
+ * ergaenzt werden, ohne dass sich Format oder Importlogik aendern.
  */
 export const DEFAULT_LOCATION_SOURCE_FILE = 'data/locations/comcave-standorte.json';
 
@@ -30,8 +31,9 @@ function resolveSourceFilePath(relativePath: string): string {
 const locationEntrySchema = z.object({
   code: z.string().trim().min(1, 'code darf nicht leer sein.'),
   name: z.string().trim().min(1, 'name darf nicht leer sein.'),
+  state: z.string().trim().min(1, 'state darf nicht leer sein.'),
   city: z.string().trim().min(1, 'city darf nicht leer sein.'),
-  postalCode: z.string().trim().min(1, 'postalCode darf nicht leer sein.'),
+  postalCode: z.string().trim().min(1, 'postalCode darf nicht leer sein.').optional(),
 });
 
 const locationSourceSchema = z.array(locationEntrySchema);
@@ -57,7 +59,7 @@ export function parseLocationSource(fileContent: string): ParsedLocation[] {
   if (!result.success) {
     throw new ValidationError(
       'Standort-Quelldatei entspricht nicht dem erwarteten Format ' +
-        '(Array aus {code, name, city, postalCode}) - Import abgebrochen.',
+        '(Array aus {code, name, state, city, postalCode?}) - Import abgebrochen.',
     );
   }
 
@@ -107,7 +109,7 @@ export async function importLocationsFromFile(
   let created = 0;
   let updated = 0;
   for (const entry of entries) {
-    const input: UpsertLocationInput = entry;
+    const input: UpsertLocationInput = { ...entry, postalCode: entry.postalCode ?? null };
     const { created: wasCreated } = await upsertLocation(input);
     if (wasCreated) created += 1;
     else updated += 1;

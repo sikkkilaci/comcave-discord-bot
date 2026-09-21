@@ -2,7 +2,10 @@ import { MessageFlags, SlashCommandBuilder, type GuildMember } from 'discord.js'
 import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
 import { getOrCreateGuildConfig } from '../../../repositories/guildConfigRepository.js';
-import { searchActiveLocations } from '../../../repositories/locationRepository.js';
+import {
+  formatLocationLabel,
+  searchActiveLocations,
+} from '../../../repositories/locationRepository.js';
 import { updatePersonalDetailsAsAdmin } from '../../../services/memberProfileService.js';
 import { MAX_AGE, MIN_AGE, PERSON_NAME_MAX_LENGTH } from '../../../types/domain.js';
 
@@ -96,10 +99,7 @@ const command: Command = {
 
     await interaction.respond(
       results.map((location) => ({
-        name: `${location.name} - ${location.city} (${location.postalCode})`.slice(
-          0,
-          MAX_CHOICE_NAME_LENGTH,
-        ),
+        name: formatLocationLabel(location).slice(0, MAX_CHOICE_NAME_LENGTH),
         value: location.id,
       })),
     );

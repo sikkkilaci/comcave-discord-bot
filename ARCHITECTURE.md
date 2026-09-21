@@ -325,8 +325,12 @@ abgelehnt, unabhaengig vom gewaehlten Weg dorthin.
 guild-gescoped (siehe Datenmodell-Abschnitt oben) und wird ueber eine versionierte Quelldatei
 (`data/locations/comcave-standorte.json`, Format in `data/locations/README.md`) importiert -
 idempotent per stabilem `code` (`upsertLocation()`), mit automatischer Deaktivierung (nicht
-Loeschung) fehlender Eintraege bei einem erneuten Import. Es wurden bewusst noch KEINE echten
-Standortdaten erfunden/eingetragen - das ist Aufgabe der Administration.
+Loeschung) fehlender Eintraege bei einem erneuten Import. Die Quelldatei enthaelt einen verifizierten
+Teilbestand von 110 echten, ausschliesslich von `comcave.de/standorte` stammenden Standorten (Stadt +
+Bundesland, teils PLZ) - keine erfundenen Adressen/PLZ/Namen und keine Daten aus Drittquellen (siehe
+`data/locations/README.md` fuer Quelle, Stand und Grenzen der Abdeckung). Das Schema traegt dem mit
+einem eigenen Pflichtfeld `state` (Bundesland) und einem optionalen `postalCode` Rechnung, da nicht
+fuer jeden offiziell bestaetigten Standort eine PLZ oeffentlich verifizierbar war.
 
 **Regelwerk-Versionierung statt In-Place-Aenderung:** `RuleSet` wird nie nachtraeglich editiert -
 `/regelwerk-aktualisieren` legt immer eine neue Version an und deaktiviert dabei atomar (in einer
@@ -1151,8 +1155,10 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
 19. ~~**Teilnehmerprofil (Pflichtangaben) + COMCAVE-Standorte**~~ - **umgesetzt.** Siehe Abschnitte
     ["Teilnehmerprofil (Pflichtangaben)" und "COMCAVE-Standorte" im
     README](./README.md#teilnehmerprofil-pflichtangaben) sowie "Teilnehmerprofil, COMCAVE-Standorte
-    und Serverregeln" oben. Standort-Katalog noch ohne echte Daten - Import-Infrastruktur ist
-    fertig, die offizielle Standortliste muss noch von der Administration bereitgestellt werden.
+    und Serverregeln" oben. Standort-Katalog mit einem verifizierten Teilbestand von 110 echten,
+    ausschliesslich von `comcave.de` stammenden Standorten befuellt (siehe
+    `data/locations/README.md`) - die vollstaendige Liste der 300+ offiziellen Standorte kann die
+    Administration jederzeit ergaenzen, ohne dass sich Format oder Importlogik aendern.
 20. ~~**Serverregeln mit Zustimmungsstatus**~~ - **umgesetzt.** Siehe Abschnitt
     ["Serverregeln und Zustimmung" im README](./README.md#serverregeln-und-zustimmung) sowie
     "Teilnehmerprofil, COMCAVE-Standorte und Serverregeln" oben. Regeltext muss noch per

@@ -63,6 +63,7 @@ describe('resolveNextJourneyStep', () => {
     const { location } = await upsertLocation({
       code: `code-${randomUUID()}`,
       name: 'COMCAVE Test',
+      state: 'Teststate',
       city: 'Teststadt',
       postalCode: '11111',
     });
@@ -86,6 +87,7 @@ describe('resolveNextJourneyStep', () => {
     const { location } = await upsertLocation({
       code: `code-${randomUUID()}`,
       name: 'COMCAVE Test',
+      state: 'Teststate',
       city: 'Teststadt',
       postalCode: '11111',
     });
@@ -110,6 +112,7 @@ describe('resolveNextJourneyStep', () => {
     const { location } = await upsertLocation({
       code: `code-${randomUUID()}`,
       name: 'COMCAVE Test',
+      state: 'Teststate',
       city: 'Teststadt',
       postalCode: '11111',
     });

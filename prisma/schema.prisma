@@ -109,8 +109,9 @@ model ComcaveLocation {
   id         String   @id @default(cuid())
   code       String   @unique // stabiler externer Schluessel aus der Quelldatei, fuer idempotenten Import
   name       String // Standortname, z. B. "COMCAVE Koeln"
+  state      String // Bundesland, z. B. "Nordrhein-Westfalen"
   city       String
-  postalCode String
+  postalCode String? // optional: nicht fuer jeden offiziellen Standort oeffentlich verifizierbar
   isActive   Boolean  @default(true)
 
   createdAt DateTime @default(now())

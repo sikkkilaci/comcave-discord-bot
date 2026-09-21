@@ -4,8 +4,9 @@ import { prisma } from '../db/client.js';
 export interface UpsertLocationInput {
   code: string;
   name: string;
+  state: string;
   city: string;
-  postalCode: string;
+  postalCode?: string | null;
 }
 
 /**
@@ -19,12 +20,26 @@ export interface UpsertLocationInput {
 export async function upsertLocation(
   input: UpsertLocationInput,
 ): Promise<{ location: ComcaveLocation; created: boolean }> {
+  const postalCode = input.postalCode ?? null;
   const existing = await prisma.comcaveLocation.findUnique({ where: { code: input.code } });
 
   const location = await prisma.comcaveLocation.upsert({
     where: { code: input.code },
-    update: { name: input.name, city: input.city, postalCode: input.postalCode, isActive: true },
-    create: { ...input, isActive: true },
+    update: {
+      name: input.name,
+      state: input.state,
+      city: input.city,
+      postalCode,
+      isActive: true,
+    },
+    create: {
+      code: input.code,
+      name: input.name,
+      state: input.state,
+      city: input.city,
+      postalCode,
+      isActive: true,
+    },
   });
 
   return { location, created: existing === null };
@@ -65,6 +80,7 @@ export async function searchActiveLocations(query: string, take = 25): Promise<C
       OR: [
         { name: { contains: trimmed } },
         { city: { contains: trimmed } },
+        { state: { contains: trimmed } },
         { postalCode: { contains: trimmed } },
       ],
     },
@@ -75,4 +91,15 @@ export async function searchActiveLocations(query: string, take = 25): Promise<C
 
 export async function countActiveLocations(): Promise<number> {
   return prisma.comcaveLocation.count({ where: { isActive: true } });
+}
+
+/**
+ * Baut eine einheitliche Anzeigebezeichnung fuer einen Standort (u. a. fuer
+ * Discord-Autocomplete-Vorschlaege) - `postalCode` ist optional (nicht jeder
+ * offizielle Standort hat eine verifizierte PLZ) und wird daher nur
+ * angehaengt, wenn vorhanden.
+ */
+export function formatLocationLabel(location: ComcaveLocation): string {
+  const plz = location.postalCode ? ` ${location.postalCode}` : '';
+  return `${location.name} - ${location.city}${plz} (${location.state})`;
 }

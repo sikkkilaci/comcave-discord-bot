@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { unlink, writeFile } from 'node:fs/promises';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
 import type { GuildMember } from 'discord.js';
 import { describe, expect, it } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
 import { listAuditEvents } from '../src/repositories/auditLogRepository.js';
 import { searchActiveLocations } from '../src/repositories/locationRepository.js';
 import {
+  DEFAULT_LOCATION_SOURCE_FILE,
   importLocationsAsAdmin,
   importLocationsFromFile,
   parseLocationSource,
@@ -36,11 +37,13 @@ async function writeTempLocationFile(entries: unknown): Promise<{
 describe('parseLocationSource', () => {
   it('parst ein gueltiges Array aus Standort-Eintraegen', () => {
     const result = parseLocationSource(
-      JSON.stringify([{ code: 'a', name: 'COMCAVE A', city: 'A-Stadt', postalCode: '11111' }]),
+      JSON.stringify([
+        { code: 'a', name: 'COMCAVE A', state: 'Testland', city: 'A-Stadt', postalCode: '11111' },
+      ]),
     );
 
     expect(result).toEqual([
-      { code: 'a', name: 'COMCAVE A', city: 'A-Stadt', postalCode: '11111' },
+      { code: 'a', name: 'COMCAVE A', state: 'Testland', city: 'A-Stadt', postalCode: '11111' },
     ]);
   });
 
@@ -56,8 +59,8 @@ describe('parseLocationSource', () => {
 
   it('wirft ValidationError bei doppelten code-Werten', () => {
     const entries = [
-      { code: 'dup', name: 'COMCAVE A', city: 'A-Stadt', postalCode: '11111' },
-      { code: 'dup', name: 'COMCAVE B', city: 'B-Stadt', postalCode: '22222' },
+      { code: 'dup', name: 'COMCAVE A', state: 'Testland', city: 'A-Stadt', postalCode: '11111' },
+      { code: 'dup', name: 'COMCAVE B', state: 'Testland', city: 'B-Stadt', postalCode: '22222' },
     ];
 
     expect(() => parseLocationSource(JSON.stringify(entries))).toThrow(ValidationError);
@@ -71,6 +74,7 @@ describe('importLocationsFromFile', () => {
       {
         code: `code-${randomUUID()}`,
         name: 'COMCAVE Import',
+        state: 'Testland',
         city: uniqueCity,
         postalCode: '11111',
       },
@@ -91,7 +95,13 @@ describe('importLocationsFromFile', () => {
     const code = `code-${randomUUID()}`;
     const uniqueCity = `Idempotenzstadt-${randomUUID()}`;
     const { relativePath, cleanup } = await writeTempLocationFile([
-      { code, name: 'COMCAVE Idempotent', city: uniqueCity, postalCode: '11111' },
+      {
+        code,
+        name: 'COMCAVE Idempotent',
+        state: 'Testland',
+        city: uniqueCity,
+        postalCode: '11111',
+      },
     ]);
 
     try {
@@ -114,14 +124,20 @@ describe('importLocationsFromFile', () => {
     const droppedCity = `Faelltwegstadt-${randomUUID()}`;
 
     const first = await writeTempLocationFile([
-      { code: keptCode, name: 'Bleibt', city: keptCity, postalCode: '11111' },
-      { code: droppedCode, name: 'Faellt weg', city: droppedCity, postalCode: '22222' },
+      { code: keptCode, name: 'Bleibt', state: 'Testland', city: keptCity, postalCode: '11111' },
+      {
+        code: droppedCode,
+        name: 'Faellt weg',
+        state: 'Testland',
+        city: droppedCity,
+        postalCode: '22222',
+      },
     ]);
     await importLocationsFromFile(first.relativePath);
     await first.cleanup();
 
     const second = await writeTempLocationFile([
-      { code: keptCode, name: 'Bleibt', city: keptCity, postalCode: '11111' },
+      { code: keptCode, name: 'Bleibt', state: 'Testland', city: keptCity, postalCode: '11111' },
     ]);
 
     try {
@@ -152,6 +168,7 @@ describe('importLocationsAsAdmin - Berechtigung', () => {
       {
         code: `code-${randomUUID()}`,
         name: 'COMCAVE Admin',
+        state: 'Testland',
         city: uniqueCity,
         postalCode: '33333',
       },
@@ -175,5 +192,50 @@ describe('importLocationsAsAdmin - Berechtigung', () => {
     await expect(importLocationsAsAdmin(guildConfig, member, member.id)).rejects.toBeInstanceOf(
       PermissionError,
     );
+  });
+});
+
+describe('reale Standort-Quelldatei (data/locations/comcave-standorte.json)', () => {
+  it('laesst sich vollstaendig parsen, ohne doppelte code-Werte und mit korrekt erhaltenen Umlauten', async () => {
+    const fileContent = await readFile(
+      path.join(process.cwd(), DEFAULT_LOCATION_SOURCE_FILE),
+      'utf-8',
+    );
+
+    const entries = parseLocationSource(fileContent);
+
+    expect(entries.length).toBeGreaterThan(0);
+    expect(new Set(entries.map((entry) => entry.code)).size).toBe(entries.length);
+
+    const muenchen = entries.find((entry) => entry.city === 'München');
+    expect(muenchen).toMatchObject({ state: 'Bayern', code: 'muenchen' });
+
+    const koeln = entries.find((entry) => entry.city === 'Köln');
+    expect(koeln).toMatchObject({ state: 'Nordrhein-Westfalen', code: 'koeln' });
+
+    // Standorte ohne verifizierte PLZ und Standorte mit verifizierter PLZ
+    // muessen nebeneinander unterstuetzt werden (postalCode ist optional).
+    expect(entries.some((entry) => entry.postalCode === undefined)).toBe(true);
+    expect(entries.some((entry) => typeof entry.postalCode === 'string')).toBe(true);
+
+    // Zwei unterschiedliche "Frankfurt"-Standorte (Hessen vs. Brandenburg)
+    // muessen ueber eindeutige codes unterscheidbar sein.
+    const frankfurtEntries = entries.filter((entry) => entry.city.startsWith('Frankfurt'));
+    expect(frankfurtEntries.map((entry) => entry.state).sort()).toEqual(['Brandenburg', 'Hessen']);
+  });
+
+  it('importiert den echten Standort-Katalog vollstaendig und macht ihn ueber die Suche auffindbar', async () => {
+    const fileContent = await readFile(
+      path.join(process.cwd(), DEFAULT_LOCATION_SOURCE_FILE),
+      'utf-8',
+    );
+    const entries = parseLocationSource(fileContent);
+
+    const summary = await importLocationsFromFile(DEFAULT_LOCATION_SOURCE_FILE);
+
+    expect(summary.created + summary.updated).toBe(entries.length);
+
+    const results = await searchActiveLocations('München', 5);
+    expect(results.some((location) => location.city === 'München')).toBe(true);
   });
 });
