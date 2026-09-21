@@ -2,6 +2,7 @@ import {
   ChannelType,
   DiscordAPIError,
   PermissionFlagsBits,
+  PermissionsBitField,
   type Guild,
   type GuildBasedChannel,
   type GuildChannelCreateOptions,
@@ -165,6 +166,22 @@ const CLASS_LEAD_VOICE_ONLY_PERMISSIONS: bigint[] = [
   PermissionFlagsBits.MoveMembers,
 ];
 
+/**
+ * Eigener Overwrite-Eintrag des Bots auf Kategorie/Kanal (siehe buildOverwrites()-Kommentar
+ * dazu) UND als "Reparatur-Set" fuer bereits bestehende, wiederverwendete Kategorien/Kanaele
+ * (siehe ensureBotAccess()) - dieselben Bits an beiden Stellen, damit ein wiederverwendeter
+ * Bereich exakt denselben Zugriff bekommt wie ein neu angelegter.
+ */
+const BOT_CHANNEL_PERMISSIONS: readonly bigint[] = [
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.ManageChannels,
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.ReadMessageHistory,
+  PermissionFlagsBits.ManageMessages,
+  PermissionFlagsBits.EmbedLinks,
+  PermissionFlagsBits.AttachFiles,
+];
+
 export interface ClassAreaSetupResult {
   className: string;
   categoryCreated: boolean;
@@ -222,16 +239,19 @@ export async function setupClassArea(
   const channelsSkipped: string[] = [];
 
   for (const blueprint of CHANNEL_BLUEPRINTS) {
+    const channelReason = `Privater Klassenbereich fuer Klasse ${klasse.name}`;
     const existingId = klasse[blueprint.key];
     const existing = existingId ? await fetchChannelSafely(guild, existingId) : null;
 
     if (existing) {
+      await ensureBotAccess(existing, botRoleId, channelReason);
       channelsSkipped.push(blueprint.name);
       continue;
     }
 
     const byName = await findChannelByName(guild, blueprint.name, category.id, blueprint.type);
     if (byName) {
+      await ensureBotAccess(byName, botRoleId, channelReason);
       await updateClassChannels(
         guildConfig.id,
         klasse.name as ClassName,
@@ -313,9 +333,18 @@ async function ensureCategory(
   klasse: Class,
   botRoleId: string | undefined,
 ): Promise<{ id: string; created: boolean }> {
+  const reason = `Privater Klassenbereich fuer Klasse ${klasse.name}`;
+
   if (klasse.categoryId) {
     const existing = await fetchChannelSafely(guild, klasse.categoryId);
-    if (existing) return { id: existing.id, created: false };
+    if (existing) {
+      // Eine wiederverwendete Kategorie kann von VOR dem Bot-Overwrite-Fix stammen und dem
+      // Bot dadurch dauerhaft den Zugriff verweigern (siehe ensureBotAccess()-Kommentar) -
+      // ohne diese Reparatur wuerde jeder Kanal darunter mit 403/50013 fehlschlagen, egal wie
+      // unauffaellig dessen eigener Overwrite-Payload ist.
+      await ensureBotAccess(existing, botRoleId, reason);
+      return { id: existing.id, created: false };
+    }
   }
 
   // Stabiler Namensabgleich als zweite Idempotenz-Ebene: klasse.categoryId ist nur gesetzt,
@@ -325,7 +354,10 @@ async function ensureCategory(
   // Mal anlegen (realer Vorfall: mehrere "📁 Klasse A"-Kategorien nach fehlgeschlagenen
   // Wiederholungen).
   const existingByName = await findCategoryByName(guild, categoryName(klasse));
-  if (existingByName) return { id: existingByName.id, created: false };
+  if (existingByName) {
+    await ensureBotAccess(existingByName, botRoleId, reason);
+    return { id: existingByName.id, created: false };
+  }
 
   // Kategorie-Overwrites duerfen (im Unterschied zu Text-Kanaelen) Sprachkanal-Bits enthalten -
   // eine Kategorie hat keinen eigenen Kanaltyp, Discord validiert Overwrite-Bits nur gegen den
@@ -339,7 +371,7 @@ async function ensureCategory(
     name: categoryName(klasse),
     type: ChannelType.GuildCategory,
     permissionOverwrites: overwrites,
-    reason: `Privater Klassenbereich fuer Klasse ${klasse.name}`,
+    reason,
   });
 
   return { id: category.id, created: true };
@@ -376,18 +408,7 @@ function buildOverwrites(
   // dafuer noetigen Basis-Berechtigungen besitzt (echter, per Overwrite-Payload verifizierter
   // Vorfall). ManageMessages ist fuer das Anpinnen der Willkommensnachricht noetig.
   if (options.botRoleId) {
-    overwrites.push({
-      id: options.botRoleId,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.ManageChannels,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.ManageMessages,
-        PermissionFlagsBits.EmbedLinks,
-        PermissionFlagsBits.AttachFiles,
-      ],
-    });
+    overwrites.push({ id: options.botRoleId, allow: [...BOT_CHANNEL_PERMISSIONS] });
   }
 
   if (klasse.roleId) {
@@ -451,7 +472,10 @@ function buildOverwrites(
   return overwrites;
 }
 
-async function fetchChannelSafely(guild: Guild, channelId: string): Promise<{ id: string } | null> {
+async function fetchChannelSafely(
+  guild: Guild,
+  channelId: string,
+): Promise<GuildBasedChannel | null> {
   try {
     return await guild.channels.fetch(channelId);
   } catch {
@@ -460,7 +484,7 @@ async function fetchChannelSafely(guild: Guild, channelId: string): Promise<{ id
 }
 
 /** Zweite Idempotenz-Ebene fuer die Klassen-Kategorie, siehe ensureCategory(). */
-async function findCategoryByName(guild: Guild, name: string): Promise<{ id: string } | null> {
+async function findCategoryByName(guild: Guild, name: string): Promise<GuildBasedChannel | null> {
   const channels = await guild.channels.fetch();
   for (const channel of channels.values()) {
     if (channel && channel.type === ChannelType.GuildCategory && channel.name === name) {
@@ -481,7 +505,7 @@ async function findChannelByName(
   name: string,
   parentId: string,
   type: ChannelType.GuildText | ChannelType.GuildVoice,
-): Promise<{ id: string } | null> {
+): Promise<GuildBasedChannel | null> {
   const channels = await guild.channels.fetch();
   for (const channel of channels.values()) {
     if (
@@ -494,6 +518,38 @@ async function findChannelByName(
     }
   }
   return null;
+}
+
+/**
+ * Selbstheilung fuer bereits bestehende (wiederverwendete) Kategorien/Kanaele: fasst NUR den
+ * Bot-eigenen Overwrite-Eintrag an (per permissionOverwrites.create(), nicht .set()) - alle
+ * anderen Overwrites (z. B. manuell in Discord angepasste Rollenrechte) bleiben unberuehrt.
+ * Noetig, weil ein vor diesem Fix angelegter Bereich den Bot-Overwrite nie erhalten hat und
+ * der Bot dadurch dauerhaft "blind" fuer ihn bliebe, selbst nachdem buildOverwrites() fuer NEU
+ * angelegte Bereiche bereits korrigiert wurde (echter Vorfall: 403/50013 beim Anlegen eines
+ * Kanals unter einer bereits bestehenden, wiederverwendeten Kategorie).
+ */
+async function ensureBotAccess(
+  channel: GuildBasedChannel,
+  botRoleId: string | undefined,
+  reason: string,
+): Promise<void> {
+  if (!botRoleId) return;
+  // Threads haben kein eigenes permissionOverwrites - kommen hier aber ohnehin nie vor (dieses
+  // Modul legt/findet ausschliesslich Kategorien, Text- und Sprachkanaele).
+  if (!('permissionOverwrites' in channel)) return;
+  const existingOverwrite = channel.permissionOverwrites.cache.get(botRoleId);
+  const hasFullAccess = BOT_CHANNEL_PERMISSIONS.every(
+    (bit) => existingOverwrite?.allow.has(bit) ?? false,
+  );
+  if (hasFullAccess) return;
+
+  const allowOptions = Object.fromEntries(
+    new PermissionsBitField(BOT_CHANNEL_PERMISSIONS as bigint[])
+      .toArray()
+      .map((name) => [name, true]),
+  );
+  await channel.permissionOverwrites.create(botRoleId, allowOptions, { reason });
 }
 
 /**

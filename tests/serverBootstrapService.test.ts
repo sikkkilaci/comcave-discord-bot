@@ -115,6 +115,11 @@ function makeFakeChannel(
     }),
     permissionOverwrites: {
       set: vi.fn(async () => channel),
+      // Simuliert vollen Bot-Zugriff von Anfang an (dieses Testfile deckt den Bootstrap-Ablauf
+      // ab, nicht ensureBotAccess()/die Selbstheilungs-Logik aus classAreaService.ts - dafuer
+      // gibt es eigene Tests in tests/classAreaService.test.ts).
+      cache: { get: () => ({ allow: { has: () => true } }) },
+      create: vi.fn(async () => channel),
     },
   };
   return channel;

@@ -62,6 +62,10 @@ const ALL_RELEVANT_BOT_PERMISSIONS = new Set<bigint>([
 
 function fakeGuild(options: {
   existingChannelIds?: Set<string>;
+  /** Teilmenge von existingChannelIds, die noch KEINEN Bot-Overwrite hat (simuliert einen vor
+   * dem Bot-Overwrite-Fix angelegten/wiederverwendeten Bereich). Alle anderen existierenden
+   * Kanaele gelten als bereits vollstaendig zugaenglich fuer den Bot. */
+  existingWithoutBotAccess?: Set<string>;
   createImpl?: (opts: FakeCreateOptions) => Promise<{ id: string }>;
   botPermissions?: Set<bigint>;
   sendImpl?: (channelId: string, text: string) => Promise<unknown>;
@@ -70,11 +74,22 @@ function fakeGuild(options: {
   createCalls: FakeCreateOptions[];
   sendCalls: Array<{ channelId: string; text: string }>;
   pinCalls: string[];
+  botAccessCreateCalls: Array<{
+    channelId: string;
+    roleId: string;
+    options: Record<string, boolean>;
+  }>;
 } {
   const existing = options.existingChannelIds ?? new Set<string>();
+  const withoutBotAccess = options.existingWithoutBotAccess ?? new Set<string>();
   const createCalls: FakeCreateOptions[] = [];
   const sendCalls: Array<{ channelId: string; text: string }> = [];
   const pinCalls: string[] = [];
+  const botAccessCreateCalls: Array<{
+    channelId: string;
+    roleId: string;
+    options: Record<string, boolean>;
+  }> = [];
   const botPermissions = options.botPermissions ?? ALL_RELEVANT_BOT_PERMISSIONS;
   // Registriert jeden per create() angelegten Kanal mit Name/Typ/Parent, damit fetch() OHNE
   // ID (die neuen Namensabgleich-Fallbacks findCategoryByName()/findChannelByName()) sie
@@ -84,10 +99,42 @@ function fakeGuild(options: {
     string,
     { id: string; name: string; type: ChannelType; parentId: string | null }
   >();
+  // Simuliert echte Discord-Overwrites pro Kanal-ID, damit ensureBotAccess() (siehe
+  // classAreaService.ts) real getestet werden kann: Kanaele aus existingChannelIds starten mit
+  // vollem Bot-Zugriff, AUSSER sie stehen in existingWithoutBotAccess.
+  const overwriteState = new Map<string, Map<string, Set<bigint>>>();
+
+  function permissionOverwritesFor(id: string) {
+    if (!overwriteState.has(id)) overwriteState.set(id, new Map());
+    const state = overwriteState.get(id)!;
+    return {
+      cache: {
+        get: (roleId: string) => {
+          const bits = state.get(roleId);
+          if (!bits) return undefined;
+          return { allow: { has: (bit: bigint) => bits.has(bit) } };
+        },
+      },
+      create: vi.fn(async (roleId: string, allowOptions: Record<string, boolean>) => {
+        const bits = new Set<bigint>();
+        for (const [name, enabled] of Object.entries(allowOptions)) {
+          if (!enabled) continue;
+          const bit = PermissionFlagsBits[name as keyof typeof PermissionFlagsBits];
+          if (typeof bit === 'bigint') bits.add(bit);
+        }
+        state.set(roleId, bits);
+        botAccessCreateCalls.push({ channelId: id, roleId, options: allowOptions });
+      }),
+    };
+  }
 
   function fakeChannel(id: string) {
+    if (existing.has(id) && !withoutBotAccess.has(id)) {
+      overwriteState.set(id, new Map([['role-bot', new Set(ALL_RELEVANT_BOT_PERMISSIONS)]]));
+    }
     return {
       id,
+      permissionOverwrites: permissionOverwritesFor(id),
       send: vi.fn(async (text: string) => {
         sendCalls.push({ channelId: id, text });
         if (options.sendImpl) await options.sendImpl(id, text);
@@ -110,7 +157,7 @@ function fakeGuild(options: {
         type: opts.type,
         parentId: opts.parent ?? null,
       });
-      return result;
+      return { ...result, permissionOverwrites: permissionOverwritesFor(result.id) };
     }
     const id = fakeIdFor(opts);
     channelRegistry.set(id, {
@@ -126,9 +173,9 @@ function fakeGuild(options: {
     if (id === undefined) {
       return new Map(channelRegistry);
     }
-    if (existing.has(id)) return { id };
+    if (existing.has(id)) return fakeChannel(id);
     const registered = channelRegistry.get(id);
-    if (registered) return { id: registered.id };
+    if (registered) return fakeChannel(registered.id);
     throw new Error('Unknown Channel');
   });
 
@@ -143,7 +190,7 @@ function fakeGuild(options: {
     members: { me, fetchMe: vi.fn(async () => me) },
   } as unknown as Guild;
 
-  return { guild, createCalls, sendCalls, pinCalls };
+  return { guild, createCalls, sendCalls, pinCalls, botAccessCreateCalls };
 }
 
 async function setupGuildAndClass(overrides: { adminRoleId?: string } = {}) {
@@ -572,6 +619,59 @@ describe('classAreaService', () => {
         expect(categoryCreateCalls).toHaveLength(1);
         const chatCreateCalls = created.filter((c) => c.name === '💬-klassenchat');
         expect(chatCreateCalls).toHaveLength(1);
+      },
+    );
+
+    it(
+      'repariert den fehlenden Bot-Zugriff auf eine wiederverwendete Kategorie/Kanaele, die ' +
+        'noch aus der Zeit VOR dem Bot-Overwrite-Fix stammen - sonst bleibt der Bot fuer sie ' +
+        'dauerhaft "blind" und jeder weitere Kanal darunter schlaegt mit 403/50013 fehl, egal ' +
+        'wie unauffaellig dessen eigener Overwrite-Payload ist (echter, per Payload ' +
+        'verifizierter Vorfall)',
+      async () => {
+        const { guildId, guildConfig } = await setupGuildAndClass();
+
+        // Simuliert: Kategorie + drei Kanaele existieren bereits in Discord (z. B. aus einem
+        // Lauf vor diesem Fix), OHNE eigenen Bot-Overwrite - die uebrigen vier Kanaele fehlen
+        // noch komplett und muessen neu angelegt werden.
+        const categoryId = 'category:📁 Klasse A';
+        const chatId = 'channel:💬-klassenchat';
+        const announcementId = 'channel:📢-ankuendigungen';
+        await prisma.class.update({
+          where: { guildId_name: { guildId, name: 'A' } },
+          data: {
+            categoryId,
+            chatChannelId: chatId,
+            announcementChannelId: announcementId,
+          },
+        });
+        const configured = (await getClassByName(guildId, 'A'))!;
+
+        const { guild, createCalls, botAccessCreateCalls } = fakeGuild({
+          existingChannelIds: new Set([categoryId, chatId, announcementId]),
+          existingWithoutBotAccess: new Set([categoryId, chatId, announcementId]),
+        });
+
+        const result = await setupClassArea(guild, guildConfig, configured, 'actor-1');
+
+        // Die drei bereits bestehenden Bausteine wurden wiederverwendet, nicht neu angelegt...
+        expect(result.categoryCreated).toBe(false);
+        expect(result.channelsSkipped).toEqual(
+          expect.arrayContaining(['💬-klassenchat', '📢-ankuendigungen']),
+        );
+        expect(createCalls.find((c) => c.type === ChannelType.GuildCategory)).toBeUndefined();
+        expect(createCalls.find((c) => c.name === '💬-klassenchat')).toBeUndefined();
+
+        // ...aber jede der drei bekam trotzdem nachtraeglich einen Bot-Overwrite spendiert.
+        const repairedChannelIds = botAccessCreateCalls.map((c) => c.channelId);
+        expect(repairedChannelIds).toEqual(
+          expect.arrayContaining([categoryId, chatId, announcementId]),
+        );
+        for (const call of botAccessCreateCalls) {
+          expect(call.roleId).toBe('role-bot');
+          expect(call.options.ViewChannel).toBe(true);
+          expect(call.options.ManageChannels).toBe(true);
+        }
       },
     );
   });
