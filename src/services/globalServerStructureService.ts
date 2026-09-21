@@ -347,7 +347,14 @@ export async function ensureGlobalServerStructure(
           'setParent' in reserved &&
           'permissionOverwrites' in reserved
         ) {
-          await reserved.setParent(category.id, { lockPermissions: false });
+          // Reihenfolge ist wichtig: ein bereits bestehender reservierter Kanal (z. B. der
+          // Log-Kanal, dessen @everyone-Deny den Bot ohne eigenen Allow-Overwrite fuer
+          // diesen Kanal "blind" macht) muss ZUERST die eigenen Overwrites bekommen, bevor
+          // irgendeine andere Aktion (hier: setParent) auf ihm versucht wird - sonst schlaegt
+          // genau diese Aktion mit DiscordAPIError 50001 "Missing Access" fehl, weil der Bot
+          // fuer diesen Kanal (noch) keinen Zugriff hat. Das Setzen der Overwrites selbst
+          // funktioniert unabhaengig vom aktuellen Sichtbarkeitsstatus, solange der Bot die
+          // dafuer noetige Basis-Berechtigung (ManageRoles/ManageChannels) besitzt.
           await reserved.permissionOverwrites.set(
             buildOverwrites(
               guild,
@@ -360,6 +367,7 @@ export async function ensureGlobalServerStructure(
             ),
             'COMCAVE-Plattform: globale Kanalstruktur',
           );
+          await reserved.setParent(category.id, { lockPermissions: false });
           result.channelsReused.push(blueprint.name);
           continue;
         }

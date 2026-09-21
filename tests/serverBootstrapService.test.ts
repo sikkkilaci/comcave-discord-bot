@@ -290,6 +290,27 @@ describe('serverBootstrapService', () => {
       expect(auditEntries.some((e) => e.action === 'admin.roles.setup')).toBe(true);
       expect(auditEntries.filter((e) => e.action === 'class.area_setup')).toHaveLength(3);
     });
+
+    it(
+      'aktualisiert bei den drei reservierten globalen Kanaelen (Verifizierung/wo-bin-ich/Log) ' +
+        'zuerst die eigenen Overwrites und erst danach setParent - sonst schlaegt setParent mit ' +
+        'DiscordAPIError 50001 "Missing Access" fehl, wenn der Kanal (wie der Log-Kanal) den Bot ' +
+        'per @everyone-Deny ohne eigenen Allow-Overwrite "blind" macht',
+      async () => {
+        const { guild, channels } = fakeGuild({});
+
+        const result = await bootstrapServer(guild, 'actor-1');
+
+        const logChannel = channels.get(result.logChannel.id);
+        expect(logChannel).toBeDefined();
+        const overwritesCallOrder =
+          logChannel?.permissionOverwrites.set.mock.invocationCallOrder[0];
+        const setParentCallOrder = logChannel?.setParent.mock.invocationCallOrder[0];
+        expect(overwritesCallOrder).toBeDefined();
+        expect(setParentCallOrder).toBeDefined();
+        expect(overwritesCallOrder as number).toBeLessThan(setParentCallOrder as number);
+      },
+    );
   });
 
   describe('bootstrapServer - Idempotenz', () => {

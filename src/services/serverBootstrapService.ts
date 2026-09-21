@@ -193,6 +193,14 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     rolesToCheck.map(([, role]) => role),
   );
 
+  let botRoleId: string | undefined;
+  try {
+    const me = guild.members.me ?? (await guild.members.fetchMe());
+    botRoleId = me.roles.highest.id;
+  } catch {
+    botRoleId = undefined;
+  }
+
   // --- 2. Globale Kanaele (#wo-bin-ich, Verifizierung, Log). ---
   const verificationChannel = await ensureTextChannel(
     guild,
@@ -212,7 +220,7 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     guild,
     guildConfig.logChannelId,
     LOG_CHANNEL_NAME,
-    buildLogChannelOverwrites(guild, adminRole.role.id),
+    buildLogChannelOverwrites(guild, adminRole.role.id, botRoleId),
     LOG_CHANNEL_TOPIC,
   );
 
@@ -452,15 +460,38 @@ async function createChannelOrThrow(
   }
 }
 
-/** @everyone verliert Sichtbarkeit; nur die Admin-Rolle sieht den Log-Kanal. */
-function buildLogChannelOverwrites(guild: Guild, adminRoleId: string): OverwriteResolvable[] {
-  return [
+/**
+ * @everyone verliert Sichtbarkeit; nur die Admin-Rolle sieht den Log-Kanal.
+ * Der Bot selbst braucht hier zwingend einen eigenen Allow-Overwrite: ohne
+ * Administrator-Rechte wird seine Basis-Berechtigung (ViewChannel) sonst vom
+ * @everyone-Deny ueberschrieben und er kann den bereits angelegten Kanal
+ * spaeter selbst nicht mehr lesen/verschieben (ensureGlobalServerStructure()
+ * schlaegt dann mit DiscordAPIError 50001 "Missing Access" fehl, da der Bot
+ * fuer diesen Kanal blind ist).
+ */
+function buildLogChannelOverwrites(
+  guild: Guild,
+  adminRoleId: string,
+  botRoleId: string | undefined,
+): OverwriteResolvable[] {
+  const overwrites: OverwriteResolvable[] = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     {
       id: adminRoleId,
       allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory],
     },
   ];
+  if (botRoleId) {
+    overwrites.push({
+      id: botRoleId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageChannels,
+      ],
+    });
+  }
+  return overwrites;
 }
 
 /**
