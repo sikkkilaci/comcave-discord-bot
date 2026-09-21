@@ -199,11 +199,27 @@ export async function setupClassArea(
     );
   }
 
-  const category = await ensureCategory(guild, guildConfig, klasse);
+  const botRoleId = await resolveBotRoleId(guild);
+
+  const category = await ensureCategory(guild, guildConfig, klasse, botRoleId);
+  // Sofort persistieren, NICHT erst am Ende der Funktion sammeln: schlaegt ein spaeterer
+  // Kanal in derselben Ausfuehrung fehl, wuerde ein erneuter /setup-server-Aufruf sonst
+  // klasse.categoryId weiterhin als null vorfinden und eine weitere Kategorie duplizieren
+  // (Wurzelursache eines echten Vorfalls: mehrere "Klasse A"-Kategorien nach fehlgeschlagenen
+  // Wiederholungen). Jeder erfolgreich angelegte/wiederverwendete Baustein wird daher einzeln
+  // und sofort gespeichert, statt gesammelt am Ende.
+  // Nicht nur bei Neuanlage persistieren, sondern auch, wenn ensureCategory() die Kategorie
+  // per Namensabgleich wiedergefunden hat (klasse.categoryId war zuvor null/veraltet) - sonst
+  // bliebe die DB dauerhaft auf dem "vergessenen" Stand, obwohl die tatsaechliche ID jetzt
+  // bekannt ist.
+  if (category.id !== klasse.categoryId) {
+    await updateClassChannels(guildConfig.id, klasse.name as ClassName, {
+      categoryId: category.id,
+    });
+  }
 
   const channelsCreated: string[] = [];
   const channelsSkipped: string[] = [];
-  const updates: ClassChannelUpdate = {};
 
   for (const blueprint of CHANNEL_BLUEPRINTS) {
     const existingId = klasse[blueprint.key];
@@ -214,9 +230,23 @@ export async function setupClassArea(
       continue;
     }
 
+    const byName = await findChannelByName(guild, blueprint.name, category.id, blueprint.type);
+    if (byName) {
+      await updateClassChannels(
+        guildConfig.id,
+        klasse.name as ClassName,
+        {
+          [blueprint.key]: byName.id,
+        } as ClassChannelUpdate,
+      );
+      channelsSkipped.push(blueprint.name);
+      continue;
+    }
+
     const overwrites = buildOverwrites(guild, guildConfig, klasse, {
       classCanSend: !blueprint.readOnlyForClass,
       includeVoicePermissions: blueprint.type === ChannelType.GuildVoice,
+      botRoleId,
     });
 
     const channel = await createChannelOrThrow(guild, {
@@ -228,20 +258,19 @@ export async function setupClassArea(
       reason: `Privater Klassenbereich fuer Klasse ${klasse.name}`,
     });
 
-    updates[blueprint.key] = channel.id;
+    // Auch hier sofort statt gesammelt persistieren, aus demselben Grund wie bei der Kategorie.
+    await updateClassChannels(
+      guildConfig.id,
+      klasse.name as ClassName,
+      {
+        [blueprint.key]: channel.id,
+      } as ClassChannelUpdate,
+    );
     channelsCreated.push(blueprint.name);
 
     if (blueprint.welcomeMessage && blueprint.type === ChannelType.GuildText) {
       await postWelcomeMessage(channel, blueprint.welcomeMessage);
     }
-  }
-
-  if (category.created) {
-    updates.categoryId = category.id;
-  }
-
-  if (Object.keys(updates).length > 0) {
-    await updateClassChannels(guildConfig.id, klasse.name as ClassName, updates);
   }
 
   if (category.created || channelsCreated.length > 0) {
@@ -272,15 +301,31 @@ export async function setupClassArea(
   };
 }
 
+const CATEGORY_NAME_PREFIX = '📁 Klasse ';
+
+function categoryName(klasse: Class): string {
+  return `${CATEGORY_NAME_PREFIX}${klasse.name}`;
+}
+
 async function ensureCategory(
   guild: Guild,
   guildConfig: GuildConfig,
   klasse: Class,
+  botRoleId: string | undefined,
 ): Promise<{ id: string; created: boolean }> {
   if (klasse.categoryId) {
     const existing = await fetchChannelSafely(guild, klasse.categoryId);
     if (existing) return { id: existing.id, created: false };
   }
+
+  // Stabiler Namensabgleich als zweite Idempotenz-Ebene: klasse.categoryId ist nur gesetzt,
+  // wenn ein vorheriger Lauf VOLLSTAENDIG durchlief. Ein Lauf, der z. B. beim Anlegen eines
+  // Kanals fehlschlug, hat die zuvor bereits neu angelegte Kategorie evtl. nie in der DB
+  // gespeichert - ohne diesen Namensabgleich wuerde ein erneuter Aufruf sie dann ein zweites
+  // Mal anlegen (realer Vorfall: mehrere "📁 Klasse A"-Kategorien nach fehlgeschlagenen
+  // Wiederholungen).
+  const existingByName = await findCategoryByName(guild, categoryName(klasse));
+  if (existingByName) return { id: existingByName.id, created: false };
 
   // Kategorie-Overwrites duerfen (im Unterschied zu Text-Kanaelen) Sprachkanal-Bits enthalten -
   // eine Kategorie hat keinen eigenen Kanaltyp, Discord validiert Overwrite-Bits nur gegen den
@@ -288,9 +333,10 @@ async function ensureCategory(
   const overwrites = buildOverwrites(guild, guildConfig, klasse, {
     classCanSend: true,
     includeVoicePermissions: true,
+    botRoleId,
   });
   const category = await createChannelOrThrow(guild, {
-    name: `📁 Klasse ${klasse.name}`,
+    name: categoryName(klasse),
     type: ChannelType.GuildCategory,
     permissionOverwrites: overwrites,
     reason: `Privater Klassenbereich fuer Klasse ${klasse.name}`,
@@ -312,11 +358,37 @@ function buildOverwrites(
   guild: Guild,
   guildConfig: GuildConfig,
   klasse: Class,
-  options: { classCanSend: boolean; includeVoicePermissions: boolean },
+  options: {
+    classCanSend: boolean;
+    includeVoicePermissions: boolean;
+    botRoleId: string | undefined;
+  },
 ): OverwriteResolvable[] {
   const overwrites: OverwriteResolvable[] = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
   ];
+
+  // Ohne diesen eigenen Overwrite-Eintrag wuerde das @everyone-Deny oben den Bot (der - anders
+  // als Administrator-Rollen - keine der weiter unten vergebenen Rollen-Allows automatisch
+  // erbt) von der soeben erzeugten Kategorie/dem Kanal aussperren: jede folgende Aktion (z. B.
+  // einen Kanal unter der Kategorie anzulegen oder eine Willkommensnachricht zu posten und
+  // anzupinnen) schlaegt dann mit 403/50013 "Missing Permissions" fehl, obwohl der Bot alle
+  // dafuer noetigen Basis-Berechtigungen besitzt (echter, per Overwrite-Payload verifizierter
+  // Vorfall). ManageMessages ist fuer das Anpinnen der Willkommensnachricht noetig.
+  if (options.botRoleId) {
+    overwrites.push({
+      id: options.botRoleId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageMessages,
+        PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.AttachFiles,
+      ],
+    });
+  }
 
   if (klasse.roleId) {
     const allow = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
@@ -384,6 +456,58 @@ async function fetchChannelSafely(guild: Guild, channelId: string): Promise<{ id
     return await guild.channels.fetch(channelId);
   } catch {
     return null;
+  }
+}
+
+/** Zweite Idempotenz-Ebene fuer die Klassen-Kategorie, siehe ensureCategory(). */
+async function findCategoryByName(guild: Guild, name: string): Promise<{ id: string } | null> {
+  const channels = await guild.channels.fetch();
+  for (const channel of channels.values()) {
+    if (channel && channel.type === ChannelType.GuildCategory && channel.name === name) {
+      return channel;
+    }
+  }
+  return null;
+}
+
+/**
+ * Zweite Idempotenz-Ebene fuer die sieben Klassenkanaele: greift, wenn ein vorheriger Lauf
+ * einen Kanal bereits anlegte, dessen ID aber (z. B. durch einen danach fehlgeschlagenen
+ * weiteren Kanal) nie in der DB gespeichert wurde. Namensabgleich ist hier eindeutig genug,
+ * da alle sieben Kanalnamen innerhalb einer Klassen-Kategorie garantiert einzigartig sind.
+ */
+async function findChannelByName(
+  guild: Guild,
+  name: string,
+  parentId: string,
+  type: ChannelType.GuildText | ChannelType.GuildVoice,
+): Promise<{ id: string } | null> {
+  const channels = await guild.channels.fetch();
+  for (const channel of channels.values()) {
+    if (
+      channel &&
+      channel.type === type &&
+      channel.name === name &&
+      channel.parentId === parentId
+    ) {
+      return channel;
+    }
+  }
+  return null;
+}
+
+/**
+ * Effektive hoechste Rolle des Bots - wird als eigener Overwrite-Eintrag in buildOverwrites()
+ * benoetigt (siehe dortiger Kommentar). `undefined` (statt eines Wurfs) im seltenen Fehlerfall,
+ * damit ein voruebergehendes Auflösungsproblem nicht den gesamten Klassenbereichs-Aufbau
+ * blockiert - ohne Bot-Overwrite bleibt das Modul funktional wie vor diesem Fix.
+ */
+async function resolveBotRoleId(guild: Guild): Promise<string | undefined> {
+  try {
+    const me = guild.members.me ?? (await guild.members.fetchMe());
+    return me.roles.highest.id;
+  } catch {
+    return undefined;
   }
 }
 

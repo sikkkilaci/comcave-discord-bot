@@ -76,6 +76,14 @@ function fakeGuild(options: {
   const sendCalls: Array<{ channelId: string; text: string }> = [];
   const pinCalls: string[] = [];
   const botPermissions = options.botPermissions ?? ALL_RELEVANT_BOT_PERMISSIONS;
+  // Registriert jeden per create() angelegten Kanal mit Name/Typ/Parent, damit fetch() OHNE
+  // ID (die neuen Namensabgleich-Fallbacks findCategoryByName()/findChannelByName()) sie
+  // wiederfinden kann - genau wie ein echter Discord-Kanal ueber guild.channels.fetch()
+  // auffindbar waere.
+  const channelRegistry = new Map<
+    string,
+    { id: string; name: string; type: ChannelType; parentId: string | null }
+  >();
 
   function fakeChannel(id: string) {
     return {
@@ -94,16 +102,40 @@ function fakeGuild(options: {
 
   const create = vi.fn(async (opts: FakeCreateOptions) => {
     createCalls.push(opts);
-    if (options.createImpl) return options.createImpl(opts);
-    return fakeChannel(fakeIdFor(opts));
+    if (options.createImpl) {
+      const result = await options.createImpl(opts);
+      channelRegistry.set(result.id, {
+        id: result.id,
+        name: opts.name,
+        type: opts.type,
+        parentId: opts.parent ?? null,
+      });
+      return result;
+    }
+    const id = fakeIdFor(opts);
+    channelRegistry.set(id, {
+      id,
+      name: opts.name,
+      type: opts.type,
+      parentId: opts.parent ?? null,
+    });
+    return fakeChannel(id);
   });
 
-  const fetch = vi.fn(async (id: string) => {
+  const fetch = vi.fn(async (id?: string) => {
+    if (id === undefined) {
+      return new Map(channelRegistry);
+    }
     if (existing.has(id)) return { id };
+    const registered = channelRegistry.get(id);
+    if (registered) return { id: registered.id };
     throw new Error('Unknown Channel');
   });
 
-  const me = { permissions: { has: (bit: bigint) => botPermissions.has(bit) } };
+  const me = {
+    permissions: { has: (bit: bigint) => botPermissions.has(bit) },
+    roles: { highest: { id: 'role-bot' } },
+  };
 
   const guild = {
     roles: { everyone: { id: EVERYONE_ID } },
@@ -341,6 +373,32 @@ describe('classAreaService', () => {
         );
       },
     );
+
+    it(
+      'vergibt dem Bot selbst einen eigenen Allow-Overwrite auf Kategorie und jedem Kanal - ' +
+        'ohne diesen Eintrag ueberschreibt das @everyone-Deny die Basis-Berechtigung des Bots ' +
+        '(kein Administrator), der Bot kann den soeben angelegten Bereich dann selbst nicht ' +
+        'mehr verwalten (echter Vorfall: 403/50013 "Missing Permissions" beim naechsten Kanal ' +
+        'unter derselben Kategorie)',
+      async () => {
+        const { guildConfig, klasse } = await setupGuildAndClass();
+        const { guild, createCalls } = fakeGuild({});
+
+        await setupClassArea(guild, guildConfig, klasse, 'actor-1');
+
+        expect(createCalls.length).toBeGreaterThan(0);
+        for (const call of createCalls) {
+          const botOverwrite = overwriteFor(call, 'role-bot');
+          expect(botOverwrite, `Kanal "${call.name}" hat keinen Bot-Overwrite`).toBeDefined();
+          expect(botOverwrite?.allow).toEqual(
+            expect.arrayContaining([
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.ManageChannels,
+            ]),
+          );
+        }
+      },
+    );
   });
 
   describe('setupClassArea - Idempotenz und Selbstheilung', () => {
@@ -406,6 +464,116 @@ describe('classAreaService', () => {
       const repaired = await getClassByName(guildId, 'A');
       expect(repaired?.chatChannelId).toBe('channel:💬-klassenchat');
     });
+
+    it(
+      'legt keine zweite "Klasse A"-Kategorie an, wenn die Kategorie in Discord bereits ' +
+        'existiert, die DB aber (z. B. nach einem fruehen Absturz vor dieser Aenderung) nichts ' +
+        'davon weiss - Namensabgleich statt blinder Neuanlage',
+      async () => {
+        const { guildId, guildConfig, klasse } = await setupGuildAndClass();
+        const shared = fakeGuild({});
+        await setupClassArea(shared.guild, guildConfig, klasse, 'actor-1');
+        const configured = (await getClassByName(guildId, 'A'))!;
+        expect(configured.categoryId).toBeTruthy();
+
+        // Simuliert eine DB, die (aus welchem Grund auch immer) keine der IDs kennt - der
+        // Discord-Zustand (shared.guild) bleibt dabei unveraendert real bestehen.
+        await prisma.class.update({
+          where: { guildId_name: { guildId, name: 'A' } },
+          data: {
+            categoryId: null,
+            chatChannelId: null,
+            announcementChannelId: null,
+            scheduleChannelId: null,
+            examChannelId: null,
+            reportChannelId: null,
+            materialChannelId: null,
+            voiceChannelId: null,
+          },
+        });
+        const forgottenInDb = (await getClassByName(guildId, 'A'))!;
+        const createCallsBeforeRetry = shared.createCalls.length;
+
+        const result = await setupClassArea(shared.guild, guildConfig, forgottenInDb, 'actor-1');
+
+        expect(result.categoryCreated).toBe(false);
+        expect(result.channelsCreated).toHaveLength(0);
+        expect(result.channelsSkipped).toHaveLength(7);
+        // Keine einzige neue create()-Aufruf in diesem zweiten Durchlauf - alles wurde per
+        // Namensabgleich wiedergefunden statt dupliziert.
+        expect(shared.createCalls.length).toBe(createCallsBeforeRetry);
+
+        const repaired = await getClassByName(guildId, 'A');
+        expect(repaired?.categoryId).toBe(configured.categoryId);
+      },
+    );
+
+    it(
+      'stellt nach einem fehlgeschlagenen Lauf (Abbruch beim dritten Kanal) sicher, dass ein ' +
+        'erneuter Aufruf Kategorie und bereits erfolgreich angelegte Kanaele wiederverwendet ' +
+        'statt sie zu duplizieren (sicherer Retry)',
+      async () => {
+        const { guildId, guildConfig, klasse } = await setupGuildAndClass();
+
+        const created: FakeCreateOptions[] = [];
+        const failingChannelName = '📅-termine';
+        let scheduleChannelAttempts = 0;
+        const firstAttempt = fakeGuild({
+          createImpl: async (opts) => {
+            created.push(opts);
+            if (opts.name === failingChannelName) {
+              scheduleChannelAttempts += 1;
+              if (scheduleChannelAttempts === 1) {
+                throw new DiscordAPIError(
+                  { code: 50013, message: 'Missing Permissions' },
+                  50013,
+                  403,
+                  'POST',
+                  '/guilds/x/channels',
+                  { body: undefined, files: undefined },
+                );
+              }
+            }
+            const id = `channel:${opts.name}`;
+            return { id, send: vi.fn(async () => ({ pin: vi.fn() })) };
+          },
+        });
+
+        await expect(
+          setupClassArea(firstAttempt.guild, guildConfig, klasse, 'actor-1'),
+        ).rejects.toBeInstanceOf(ValidationError);
+
+        // Kategorie + die beiden vor dem Fehlschlag erfolgreich angelegten Kanaele
+        // (💬-klassenchat, 📢-ankuendigungen) muessen bereits persistiert sein.
+        const afterFailure = (await getClassByName(guildId, 'A'))!;
+        expect(afterFailure.categoryId).toBeTruthy();
+        expect(afterFailure.chatChannelId).toBeTruthy();
+        expect(afterFailure.announcementChannelId).toBeTruthy();
+        expect(afterFailure.scheduleChannelId).toBeNull();
+
+        // Zweiter Versuch: derselbe Discord-Zustand (dieselbe fakeGuild-Instanz), diesmal
+        // klappt auch der Termine-Kanal.
+        const result = await setupClassArea(
+          firstAttempt.guild,
+          guildConfig,
+          afterFailure,
+          'actor-1',
+        );
+
+        expect(result.categoryCreated).toBe(false);
+        expect(result.channelsSkipped).toEqual(
+          expect.arrayContaining(['💬-klassenchat', '📢-ankuendigungen']),
+        );
+        expect(result.channelsCreated).toContain('📅-termine');
+
+        // Kategorie und die beiden bereits vorhandenen Kanaele wurden im zweiten Versuch
+        // KEIN zweites Mal angelegt.
+        const categoryCreateCalls = created.filter((c) => c.type === ChannelType.GuildCategory);
+        expect(categoryCreateCalls).toHaveLength(1);
+        const chatCreateCalls = created.filter((c) => c.name === '💬-klassenchat');
+        expect(chatCreateCalls).toHaveLength(1);
+      },
+    );
   });
 
   describe('setupClassArea - Discord-Fehlerbehandlung', () => {
