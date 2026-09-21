@@ -2,9 +2,30 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-// Muss zum DATABASE_URL in tests/setup.ts passen ("file:./test.db", relativ zu
-// prisma/schema.prisma aufgeloest = prisma/test.db).
-const dbFile = path.resolve(process.cwd(), 'prisma', 'test.db');
+/**
+ * Liefert das DATABASE_URL, gegen das dieser Testlauf migriert wird. Faellt -
+ * wie tests/setup.ts (`process.env.DATABASE_URL ??= 'file:./test.db'`) - nur
+ * dann auf den Default zurueck, wenn noch keins gesetzt ist, statt (wie
+ * frueher) unabhaengig davon immer denselben Wert zu erzwingen. Migration
+ * (hier) und Testprozess (tests/setup.ts) lesen dieselbe Umgebungsvariable
+ * mit derselben Fallback-Regel und muessen daher immer dieselbe SQLite-Datei
+ * verwenden - vorher konnte z. B. ein von aussen bereits gesetztes
+ * DATABASE_URL (etwa durch die CI-Workflow-Konfiguration) dazu fuehren, dass
+ * hier eine andere Datei migriert wurde als die, gegen die der Testprozess
+ * tatsaechlich lief ("table does not exist").
+ */
+export function resolveTestDatabaseUrl(): string {
+  return process.env.DATABASE_URL ?? 'file:./test.db';
+}
+
+/** Leitet aus einem `file:`-DATABASE_URL den absoluten Pfad ab (relativ zu prisma/schema.prisma, wie Prisma ihn selbst aufloest). */
+export function resolveTestDatabaseFilePath(databaseUrl: string): string {
+  const relativePath = databaseUrl.replace(/^file:/, '').replace(/^\.\//, '');
+  return path.resolve(process.cwd(), 'prisma', relativePath);
+}
+
+const databaseUrl = resolveTestDatabaseUrl();
+const dbFile = resolveTestDatabaseFilePath(databaseUrl);
 const journalFile = `${dbFile}-journal`;
 
 function removeTestDb(): void {
@@ -24,7 +45,7 @@ export default function setup(): () => void {
 
   execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
     stdio: 'inherit',
-    env: { ...process.env, DATABASE_URL: 'file:./test.db' },
+    env: { ...process.env, DATABASE_URL: databaseUrl },
   });
 
   return removeTestDb;
