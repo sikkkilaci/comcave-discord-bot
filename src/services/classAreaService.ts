@@ -21,6 +21,8 @@ const logger = createChildLogger('classAreaService');
 
 /** Discord-API-Fehlercode fuer "Missing Permissions". */
 const DISCORD_MISSING_PERMISSIONS = 50013;
+/** Discord-API-Fehlercode fuer "Missing Access" (siehe ensureBotAccess()-Kommentar). */
+const DISCORD_MISSING_ACCESS = 50001;
 
 type ChannelKey = Exclude<keyof ClassChannelUpdate, 'categoryId'>;
 
@@ -549,7 +551,31 @@ async function ensureBotAccess(
       .toArray()
       .map((name) => [name, true]),
   );
-  await channel.permissionOverwrites.create(botRoleId, allowOptions, { reason });
+  try {
+    await channel.permissionOverwrites.create(botRoleId, allowOptions, { reason });
+  } catch (error) {
+    if (error instanceof DiscordAPIError && error.code === DISCORD_MISSING_ACCESS) {
+      // Belegter Grenzfall von Discord selbst: ein Bot ohne jede Sicht auf einen Kanal kann
+      // sich diese Sicht auch ueber das Bearbeiten der Kanal-Berechtigungen NICHT selbst
+      // verschaffen (dieselbe PUT-.../permissions-Route verlangt exakt die Sicht, die hier
+      // erst hergestellt werden soll - ein serverseitiger Deadlock, kein Bug in diesem Code).
+      // Nur ein Mensch mit Server-Zugriff (Owner/Admin sehen JEDEN Kanal unabhaengig von
+      // Overwrites) kann das aufloesen, z. B. durch Loeschen und Neuanlegen des Kanals.
+      throw new ValidationError(
+        `Ich habe keinerlei Zugriff auf den Kanal/die Kategorie "${channel.name}" (ID: ${channel.id}) ` +
+          'und kann mir diesen Zugriff auch nicht selbst verschaffen - das lehnt Discord serverseitig ' +
+          'ab, unabhaengig von meinen sonstigen Berechtigungen. Das passiert nur bei Kanaelen/' +
+          'Kategorien aus einem sehr alten Lauf, bevor ich mir selbst einen Overwrite-Eintrag gegeben ' +
+          'habe. Bitte lösche "' +
+          channel.name +
+          '" (ID ' +
+          channel.id +
+          ') einmal manuell in Discord (als Server-Owner/Admin siehst du ihn, ich nicht) und ' +
+          'führe den Befehl danach erneut aus - er wird dann sauber neu angelegt.',
+      );
+    }
+    throw error;
+  }
 }
 
 /**

@@ -66,6 +66,10 @@ function fakeGuild(options: {
    * dem Bot-Overwrite-Fix angelegten/wiederverwendeten Bereich). Alle anderen existierenden
    * Kanaele gelten als bereits vollstaendig zugaenglich fuer den Bot. */
   existingWithoutBotAccess?: Set<string>;
+  /** Kanal-/Kategorie-IDs, fuer die ensureBotAccess()'s permissionOverwrites.create() mit
+   * DiscordAPIError 50001 "Missing Access" fehlschlaegt (simuliert einen Kanal, den der Bot
+   * auch per API nicht mehr reparieren kann - siehe classAreaService.ts). */
+  blindChannelIds?: Set<string>;
   createImpl?: (opts: FakeCreateOptions) => Promise<{ id: string }>;
   botPermissions?: Set<bigint>;
   sendImpl?: (channelId: string, text: string) => Promise<unknown>;
@@ -116,6 +120,16 @@ function fakeGuild(options: {
         },
       },
       create: vi.fn(async (roleId: string, allowOptions: Record<string, boolean>) => {
+        if (options.blindChannelIds?.has(id)) {
+          throw new DiscordAPIError(
+            { code: 50001, message: 'Missing Access' },
+            50001,
+            403,
+            'PUT',
+            `/channels/${id}/permissions/${roleId}`,
+            { body: undefined, files: undefined },
+          );
+        }
         const bits = new Set<bigint>();
         for (const [name, enabled] of Object.entries(allowOptions)) {
           if (!enabled) continue;
@@ -672,6 +686,38 @@ describe('classAreaService', () => {
           expect(call.options.ViewChannel).toBe(true);
           expect(call.options.ManageChannels).toBe(true);
         }
+      },
+    );
+
+    it(
+      'wirft eine klare, auf manuelles Loeschen hinweisende ValidationError statt eines rohen ' +
+        'Absturzes, wenn eine wiederverwendete Kategorie fuer den Bot komplett unsichtbar ist ' +
+        'und sich das auch per permissionOverwrites.create() nicht reparieren laesst (echter ' +
+        'Vorfall: DiscordAPIError[50001] "Missing Access" beim PUT .../permissions/... - Discord ' +
+        'verlangt fuer genau diese Aktion die Sicht, die sie erst herstellen soll)',
+      async () => {
+        const { guildId, guildConfig } = await setupGuildAndClass();
+
+        const categoryId = 'category:📁 Klasse A';
+        await prisma.class.update({
+          where: { guildId_name: { guildId, name: 'A' } },
+          data: { categoryId },
+        });
+        const configured = (await getClassByName(guildId, 'A'))!;
+
+        const { guild } = fakeGuild({
+          existingChannelIds: new Set([categoryId]),
+          existingWithoutBotAccess: new Set([categoryId]),
+          blindChannelIds: new Set([categoryId]),
+        });
+
+        const error = await setupClassArea(guild, guildConfig, configured, 'actor-1').catch(
+          (e: unknown) => e,
+        );
+
+        expect(error).toBeInstanceOf(ValidationError);
+        expect((error as ValidationError).message).toContain(categoryId);
+        expect((error as ValidationError).message.toLowerCase()).toContain('lösche');
       },
     );
   });
