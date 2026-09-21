@@ -53,6 +53,12 @@ describe('commandLoader', () => {
       'lerngruppe-schliessen': PermissionLevel.VERIFIED,
       'lerngruppe-status': PermissionLevel.KLASSENLEITUNG,
       'lerngruppe-mitglied-entfernen': PermissionLevel.KLASSENLEITUNG,
+      'standort-waehlen': PermissionLevel.EVERYONE,
+      regeln: PermissionLevel.EVERYONE,
+      'regelwerk-aktualisieren': PermissionLevel.ADMIN,
+      'regelwerk-status': PermissionLevel.ADMIN,
+      'mitglied-profil-bearbeiten': PermissionLevel.ADMIN,
+      'setup-standorte-importieren': PermissionLevel.ADMIN,
     };
 
     for (const [name, level] of Object.entries(expected)) {

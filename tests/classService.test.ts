@@ -3,9 +3,11 @@ import { DiscordAPIError, type GuildMember } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
 import { updateClassRole } from '../src/repositories/classRepository.js';
-import { getMemberWithClass } from '../src/repositories/memberRepository.js';
+import { getMemberWithClass, updatePersonalDetails } from '../src/repositories/memberRepository.js';
 import { setVerificationStatus } from '../src/repositories/memberRepository.js';
 import { listAuditEvents } from '../src/repositories/auditLogRepository.js';
+import { createNewActiveRuleSet } from '../src/repositories/ruleSetRepository.js';
+import { acceptRules } from '../src/repositories/ruleAcceptanceRepository.js';
 import { assignClass, getCurrentClassName } from '../src/services/classService.js';
 import { PermissionError, ValidationError } from '../src/utils/errors.js';
 
@@ -49,9 +51,18 @@ async function setupGuildWithClasses(): Promise<{
   return { guildId, guildConfig, roleA, roleB };
 }
 
+/** Markiert das Teilnehmerprofil als vollstaendig und stimmt einer frisch angelegten Regelversion zu. */
+async function completeProfileAndAcceptRules(guildId: string, discordId: string): Promise<void> {
+  await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
+  const ruleSet = await createNewActiveRuleSet(guildId, 'Testregeln', 'admin-test');
+  await acceptRules(guildId, discordId, ruleSet.id);
+}
+
+/** Verifiziert + Profil vollstaendig + Regeln akzeptiert - der "startklar fuer Onboarding/Klassenwahl"-Zustand. */
 async function createVerifiedDiscordId(guildId: string): Promise<string> {
   const discordId = `discord-${randomUUID()}`;
   await setVerificationStatus(guildId, discordId, 'VERIFIED');
+  await completeProfileAndAcceptRules(guildId, discordId);
   return discordId;
 }
 
@@ -245,6 +256,55 @@ describe('classService', () => {
 
       expect(firstCall).toBe('B');
       expect(secondCall).toBe('B');
+    });
+  });
+
+  describe('Profil-/Regel-Guard (Umgehungsschutz)', () => {
+    it('assignClass wirft PermissionError, wenn das Profil trotz Verifizierung nicht vollstaendig ist', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = `discord-${randomUUID()}`;
+      await setVerificationStatus(guildId, discordId, 'VERIFIED');
+      const member = fakeGuildMember(discordId);
+
+      await expect(assignClass(member, guildConfig, 'A', discordId)).rejects.toBeInstanceOf(
+        PermissionError,
+      );
+    });
+
+    it('getCurrentClassName wirft PermissionError, wenn das Profil trotz Verifizierung nicht vollstaendig ist', async () => {
+      const guildId = `guild-${randomUUID()}`;
+      await getOrCreateGuildConfig(guildId);
+      const discordId = `discord-${randomUUID()}`;
+      await setVerificationStatus(guildId, discordId, 'VERIFIED');
+
+      await expect(getCurrentClassName(guildId, discordId)).rejects.toBeInstanceOf(PermissionError);
+    });
+
+    it('assignClass wirft PermissionError, wenn das Profil vollstaendig ist, aber die aktuellen Regeln noch nicht akzeptiert wurden', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = `discord-${randomUUID()}`;
+      await setVerificationStatus(guildId, discordId, 'VERIFIED');
+      await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
+      await createNewActiveRuleSet(guildId, 'Testregeln', 'admin-test');
+      const member = fakeGuildMember(discordId);
+
+      await expect(assignClass(member, guildConfig, 'A', discordId)).rejects.toBeInstanceOf(
+        PermissionError,
+      );
+    });
+
+    it('assignClass wirft erneut PermissionError, wenn nach einem Regelwerk-Update noch nicht der neuen Version zugestimmt wurde', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = await createVerifiedDiscordId(guildId);
+      const member = fakeGuildMember(discordId);
+      await assignClass(member, guildConfig, 'A', discordId);
+
+      // Neue Regelversion - die bisherige Zustimmung bezieht sich nur auf die alte Version.
+      await createNewActiveRuleSet(guildId, 'Aktualisierte Testregeln', 'admin-test');
+
+      await expect(assignClass(member, guildConfig, 'B', discordId)).rejects.toBeInstanceOf(
+        PermissionError,
+      );
     });
   });
 });

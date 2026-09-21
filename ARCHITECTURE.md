@@ -74,7 +74,11 @@ Faustregeln:
 - `GuildConfig`: Konfiguration pro Server (Rollen-IDs, Kanal-IDs). Wird lazy per
   `getOrCreateGuildConfig()` angelegt, keine manuelle Ersteinrichtung noetig.
 - `Member`: Verknuepfung Discord-Nutzer <-> Verifizierungsstatus, IT-Erfahrung, Interessen,
-  Klassenzuordnung.
+  Klassenzuordnung sowie Pflicht-Teilnehmerprofil (`firstName`/`lastName`/`age`/`locationId`/
+  `profileCompletedAt`, siehe "Teilnehmerprofil, COMCAVE-Standorte und Serverregeln" unten).
+- `ComcaveLocation`: Katalog der COMCAVE-Kurs-/Niederlassungsstandorte. Bewusst **global**, nicht
+  guild-gescoped (ein Standort ist ein realer, serverunabhaengiger Fakt) - `isActive` statt Loeschen,
+  damit eine `Member.locationId`-Zuordnung nie durch einen entfernten Standort zerstoert wird.
 - `OnboardingAnswer`: Frage/Antwort-Paare fuer die dynamischen Onboarding-Folgefragen
   (append-only Historie, siehe Onboarding-Abschnitt unten).
 - `Class`: Klasse (A/B/C) mit zugehoeriger Rolle (`roleId`), privatem Kategorie-Channel
@@ -106,6 +110,10 @@ Faustregeln:
 - `StudyGroup`: temporaere Lerngruppe einer Klasse (Name, Ersteller, aktiv/geschlossen, optionales
   Teilnehmerlimit). `StudyGroupMember`: Mitgliedschaft eines Discord-Nutzers in einer Gruppe. Siehe
   "Lerngruppen" unten.
+- `RuleSet`: eine Version des Serverregelwerks (guild-gescoped, unveraenderlich - eine
+  Aktualisierung legt immer eine neue Zeile mit fortlaufender `version` an). `RuleAcceptance`:
+  Zustimmungsstatus eines Mitglieds zu EINER Version (`shownAt`/`acceptedAt`). Siehe
+  "Teilnehmerprofil, COMCAVE-Standorte und Serverregeln" unten.
 
 SQLite unterstuetzt in Prisma keine nativen Enums; Statuswerte (z. B. Verifizierungsstatus) werden
 daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt.
@@ -183,6 +191,27 @@ daher als String-Spalten mit Validierung in `src/types/domain.ts` (Zod) gefuehrt
 memberDiscordId])`, damit ein wiederholter Beitrittsversuch nie zu einer doppelten Mitgliedschaft
 > fuehren kann.
 
+> **Migration `add_member_profile_and_locations`:** Fuegt `ComcaveLocation` sowie
+> `firstName`/`lastName`/`age`/`locationId`/`profileCompletedAt` auf `Member` hinzu - rein additiv,
+> alle Felder nullable (bestehende Mitglieder ohne Profil bleiben gueltig, `profileCompletedAt:
+null` ist das Gate-Flag fuer `assertProfileComplete()`). `ComcaveLocation` bewusst als eigenes,
+> globales Modell statt einer Erweiterung von `GuildConfig`/`Class`, da ein Standort keinerlei
+> Guild-Bezug hat (siehe Datenmodell-Hinweis oben) und perspektivisch 300+ Eintraege umfassen soll -
+> eine Freitext-Spalte auf `Member` haette weder Idempotenz beim Import noch eine sinnvolle
+> Autocomplete-Suche erlaubt.
+
+> **Migration `add_rules_and_acceptance`:** Fuegt `RuleSet` und `RuleAcceptance` hinzu (analog zu
+> `add_course_plan`/`add_study_groups` rein additiv). `RuleSet` traegt `@@unique([guildId, version])`
+> statt eines einzelnen Freitextfelds auf `GuildConfig`, damit historische Versionen erhalten
+> bleiben (eine bereits erteilte Zustimmung muss auch nach einem Update nachvollziehbar bleiben,
+> wozu die damalige Version unveraendert vorliegen muss). `RuleAcceptance.acceptedAt` ist nullable
+> und getrennt von `shownAt`, weil beide Zeitpunkte unabhaengig auftreten koennen (angezeigt, aber
+> noch nicht zugestimmt) - ein einzelnes Boolean-Feld haette diese Unterscheidung nicht abgebildet.
+> `@@unique([memberDiscordId, ruleSetId])` verhindert doppelte Zustimmungen zur selben Version und
+> sorgt zugleich dafuer, dass eine neue Version automatisch keine Zustimmungszeile besitzt - genau
+> der Mechanismus, der eine erneute Zustimmung nach einem Regelwerk-Update erzwingt, ganz ohne
+> Zusatzlogik.
+
 ## Implementierte Kernfunktionen
 
 ### Verifizierung neuer Mitglieder
@@ -244,6 +273,79 @@ Design-Entscheidungen:
 > `findGuildMemberAcrossGuilds()` (`src/bot/discordHelpers.ts`) durch Absuchen aller Server
 > ermittelt, auf denen der Bot aktiv ist. Verifizierung und der komplette Onboarding-Fragebogen
 > funktionieren dadurch jetzt korrekt auch vollstaendig innerhalb der DM.
+
+### Teilnehmerprofil, COMCAVE-Standorte und Serverregeln
+
+Zwischen Verifizierung und Onboarding eingefuegter Pflichtblock: Vorname/Nachname/Alter +
+COMCAVE-Standort (`src/services/memberProfileService.ts`, `src/repositories/locationRepository.ts`)
+sowie Zustimmung zu den aktuellen Serverregeln (`src/services/ruleService.ts`). Ablauf:
+
+1. Nach der Verifizierung zeigt der Bot einen Button "Angaben machen", der ein Discord-**Modal**
+   mit drei Textfeldern (Vorname, Nachname, Alter) oeffnet (`buildProfileDetailsModal()` in
+   `src/bot/ui/profileMessage.ts`). Modals unterstuetzen keine Select-/Autocomplete-Komponenten,
+   daher der Standort als separater, zweiter Schritt.
+2. `/standort-waehlen standort:<Suche>` nutzt eine Command-Option mit `.setAutocomplete(true)`
+   statt eines festen Select-Menus (Discords Hartlimit: 25 Optionen, hier aber perspektivisch
+   300+ Standorte) - ein neuer `AutocompleteInteraction`-Handler in `interactionCreate.ts`
+   durchsucht `ComcaveLocation` per Teilstring auf Name/Stadt/PLZ.
+3. Sobald beides vorliegt, setzt `completeProfileAndSetNickname()` `profileCompletedAt` und
+   synchronisiert den **Server-Nickname** (`GuildMember.setNickname()`, niemals den globalen
+   Discord-Benutzernamen) ueber `src/services/discordNicknameSync.ts`.
+4. Danach zeigt der Bot die aktuelle Regelversion (`RuleSet`) mit einem
+   Zustimmungs-Button - erst nach explizitem Klick ("Ich stimme den Regeln zu") gilt der Schritt
+   als erledigt.
+
+**Zentraler Dispatcher statt verstreuter Reihenfolge-Logik:**
+`src/services/memberJourneyService.ts::resolveNextJourneyStep()` ist die EINZIGE Stelle, die die
+Schrittreihenfolge kennt (`NEEDS_VERIFICATION` → `NEEDS_PROFILE_DETAILS` → `NEEDS_LOCATION` →
+`NEEDS_RULES_ACCEPTANCE` → `NEEDS_ONBOARDING` → `COMPLETE`). `src/bot/journeyFlow.ts` rendert dazu
+die passende Nachricht und wird von drei Stellen aus aufgerufen (nach Verify-Klick, nach
+Standortwahl, nach Regelzustimmung) - dieselbe Continuation-Stelle, die zuvor nur ins Onboarding
+sprang, ruft jetzt zuerst diesen Dispatcher.
+
+**Reihenfolge Verifizierung vs. Regelzustimmung (explizit abgewogen):** Verifizierung bleibt
+technisch der erste Schritt, obwohl inhaltlich naheliegend waere, zuerst zustimmen zu lassen. Grund:
+Es gibt genau EINEN bestehenden Einstiegspunkt nach dem Server-Beitritt (die Verify-DM,
+`handleVerifyButton()`); Profil und Regeln haengen sich additiv an diesen an, statt einen zweiten,
+parallelen Einstiegspunkt VOR der Verifizierung neu zu bauen (haette `guildMemberAdd.ts` und die
+initiale DM selbst veraendert - ein Eingriff in eine bereits funktionierende, getestete Komponente
+statt einer reinen Erweiterung). Sicherheitsrelevant ist das nicht: der eigentlich schuetzenswerte
+Bereich (private Klassenkanaele) wird ohnehin erst durch die Klassenrolle nach `/wo-bin-ich`
+freigeschaltet, und `assignClass()` liegt hinter `assertProfileComplete()` UND
+`assertRulesAccepted()` - unabhaengig von der Reihenfolge relativ zur Verifizierung.
+
+**Umgehungsschutz:** `assertProfileComplete()` und `assertRulesAccepted()` folgen demselben Muster
+wie `assertMemberVerified()` - beide werden bei JEDEM Zugriff frisch geprueft (in
+`onboardingService.ts` und `classService.ts` zusaetzlich zur bestehenden Verifizierungspruefung
+eingebaut), nicht nur einmalig beim ersten Kontakt. Ein direkter `/onboarding`-Aufruf oder ein
+Klick auf "Onboarding neu starten" vor Abschluss von Profil/Regeln wird dadurch fail-closed
+abgelehnt, unabhaengig vom gewaehlten Weg dorthin.
+
+**COMCAVE-Standorte als eigener, globaler Katalog:** `ComcaveLocation` ist bewusst NICHT
+guild-gescoped (siehe Datenmodell-Abschnitt oben) und wird ueber eine versionierte Quelldatei
+(`data/locations/comcave-standorte.json`, Format in `data/locations/README.md`) importiert -
+idempotent per stabilem `code` (`upsertLocation()`), mit automatischer Deaktivierung (nicht
+Loeschung) fehlender Eintraege bei einem erneuten Import. Es wurden bewusst noch KEINE echten
+Standortdaten erfunden/eingetragen - das ist Aufgabe der Administration.
+
+**Regelwerk-Versionierung statt In-Place-Aenderung:** `RuleSet` wird nie nachtraeglich editiert -
+`/regelwerk-aktualisieren` legt immer eine neue Version an und deaktiviert dabei atomar (in einer
+Prisma-Transaktion) die vorige. Das haelt jede historische Zustimmung korrekt einer konkreten,
+unveraenderten Fassung zugeordnet und erzwingt nebenbei automatisch eine erneute Zustimmung nach
+einem Update (die neue `RuleSet.id` hat zwangslaeufig noch keine `RuleAcceptance`-Zeile).
+
+**Datenschutz/Datensparsamkeit:** Alter wird als reine Zahl gespeichert, nie als Geburtsdatum.
+Audit-Log-Metadaten (`member.profile_details_set`, `member.location_set`,
+`member.profile_completed`, `member.profile_updated_by_admin`, `rules.version_created`,
+`rules.accepted`) enthalten ausschliesslich Feldnamen/Versionsnummern, nie die eigentlichen Werte
+(Name, Alter, Standortname, Regeltext) - konsistent mit der bereits etablierten Zurueckhaltung bei
+`class.change` (nur Klassennamen, keine Freitexte). Der zugeordnete Standort ist standardmaessig
+nur fuer Admins sichtbar (`/mitglied-profil-bearbeiten` liest ihn, `/wo-bin-ich` zeigt ihn nicht).
+
+**Korrektur nur administrativ:** `/mitglied-profil-bearbeiten` (ADMIN-only) ist der einzige Weg,
+bereits erfasste Angaben zu aendern - bewusst nicht selbstbedienbar fuer das Mitglied selbst
+(verhindert z. B. wiederholtes, unkontrolliertes Aendern des Alters), analog zur bestehenden
+Zurueckhaltung bei `/mitglied-verifizieren`.
 
 ### Dynamisches Onboarding
 
@@ -968,6 +1070,20 @@ tatsaechlich einzusehen - nur direkter Datenbankzugriff. Das Review hat das gesc
   Datensatz existiert UND `classId`-gleich mit dem Lernmaterial ist - eine manipulierte
   Verknuepfungs-ID kann dadurch nie eine Verbindung zu einer fremden Klasse herstellen, selbst
   wenn die ID selbst gueltig ist (gehoert nur zu einer anderen Klasse).
+- Teilnehmerprofil und Regelzustimmung sind wie Verifizierung/Klassenwahl an eine bei jedem
+  Zugriff frisch geprueften Gate-Funktion gekoppelt (`assertProfileComplete()`/
+  `assertRulesAccepted()`, siehe "Teilnehmerprofil, COMCAVE-Standorte und Serverregeln" oben) -
+  kein einmaliges, umgehbares Client-Flag.
+- `selectLocation()`/`completeProfileAndSetNickname()` loesen eine `locationId` immer gegen die
+  Datenbank auf (`getLocationById()`) und verlangen `isActive: true` - eine manipulierte oder
+  veraltete ID aus einer Autocomplete-Antwort wird dadurch fail-closed abgelehnt.
+- Persoenliche Daten (Name/Alter/Standort) tauchen in keinem Audit-Log-Eintrag, keiner normalen
+  Log-Ausgabe und keiner Fehlermeldung im Klartext auf - siehe Datenschutz-Absatz im
+  Teilnehmerprofil-Abschnitt oben.
+- Die zusaetzliche Bot-Permission `ManageNicknames` wird ausschliesslich fuer das automatische
+  Setzen des serverbezogenen Nicknamens verwendet, nie fuer den globalen Discord-Benutzernamen
+  (dafuer besitzt kein Bot ueberhaupt eine Berechtigung) - ein Fehlschlag wird ueber
+  `trySetNickname()` abgefangen, nie ungeprueft durchgereicht.
 
 ## Roadmap der Kernfunktionen
 
@@ -1032,6 +1148,17 @@ Kanal-Nachricht per `/setup-klassen`sowie`/wo-bin-ich` als persoenliche Alternat
     `COURSE_PLAN_SOURCE_FILES` (`coursePlanImportService.ts`) und ein Import-Lauf - Schema, Services,
     Commands und Permission-Pruefungen sind bereits klassen-generisch und brauchen keine Aenderung.
 18. **Weitere Admin-Befehle**
+19. ~~**Teilnehmerprofil (Pflichtangaben) + COMCAVE-Standorte**~~ - **umgesetzt.** Siehe Abschnitte
+    ["Teilnehmerprofil (Pflichtangaben)" und "COMCAVE-Standorte" im
+    README](./README.md#teilnehmerprofil-pflichtangaben) sowie "Teilnehmerprofil, COMCAVE-Standorte
+    und Serverregeln" oben. Standort-Katalog noch ohne echte Daten - Import-Infrastruktur ist
+    fertig, die offizielle Standortliste muss noch von der Administration bereitgestellt werden.
+20. ~~**Serverregeln mit Zustimmungsstatus**~~ - **umgesetzt.** Siehe Abschnitt
+    ["Serverregeln und Zustimmung" im README](./README.md#serverregeln-und-zustimmung) sowie
+    "Teilnehmerprofil, COMCAVE-Standorte und Serverregeln" oben. Regeltext muss noch per
+    `/regelwerk-aktualisieren` erstmalig konfiguriert werden - ohne aktives `RuleSet` bleibt der
+    Eintrittsflow an dieser Stelle mit einer verstaendlichen Fehlermeldung stehen (bewusst
+    fail-closed, kein stillschweigendes Ueberspringen).
 
 Jede dieser Funktionen wird als eigener, in sich getesteter Arbeitsschritt umgesetzt, um das
 Projekt durchgehend in einem lauffaehigen Zustand zu halten.

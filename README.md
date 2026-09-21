@@ -3,15 +3,25 @@
 Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
-Berechtigungssystem, Command-/Event-Infrastruktur) sind zehn Kernfunktionen umgesetzt:
-**Verifizierung neuer Mitglieder**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**,
-**private Klassenbereiche**, **klassenbezogene Klassenleitung**, **Pruefungen und Termine**,
-**Tages-/Wochenberichte als Berichtsheft-Grundlage**, **strukturiertes Lernmaterial**, ein
-**Kursplan mit Kenntnisnahme und 7-Tage-Hinweis** (aktuell fuer Klasse A) sowie **klassenbezogene
-Lerngruppen** (Beitreten/Verwalten/Moderation ueber den gemeinsamen Klassen-Sprachkanal) - die
-klassenbezogenen Fachfunktionen auf Basis der Klassenleitung. Weitere Fachfunktionen (eigene
-Kursplaene fuer B/C, weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt.
-Details zu Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+Berechtigungssystem, Command-/Event-Infrastruktur) sind die Kernfunktionen umgesetzt:
+**Verifizierung neuer Mitglieder**, ein **verpflichtendes Teilnehmerprofil** (Vorname/Nachname/
+Alter/COMCAVE-Standort, mit automatischem Server-Nickname), **Serverregeln mit nachvollziehbarer
+Zustimmung**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**, **private Klassenbereiche**,
+**klassenbezogene Klassenleitung**, **Pruefungen und Termine**, **Tages-/Wochenberichte als
+Berichtsheft-Grundlage**, **strukturiertes Lernmaterial**, ein **Kursplan mit Kenntnisnahme und
+7-Tage-Hinweis** (aktuell fuer Klasse A) sowie **klassenbezogene Lerngruppen** (Beitreten/
+Verwalten/Moderation ueber den gemeinsamen Klassen-Sprachkanal) - die klassenbezogenen
+Fachfunktionen auf Basis der Klassenleitung. Weitere Fachfunktionen (eigene Kursplaene fuer B/C,
+weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt. Details zu
+Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
+**Eintrittsflow (verbindliche Reihenfolge):** Beitritt → Verifizierung → Teilnehmerprofil
+(Pflichtangaben + COMCAVE-Standort) → Serverregeln (Zustimmung) → bestehendes Onboarding →
+Klassenwahl A/B/C. Jeder Schritt wird ueber eine eigene, bei jedem Zugriff frisch gepruefte
+Gate-Funktion abgesichert (`assertMemberVerified()` → `assertProfileComplete()` →
+`assertRulesAccepted()`), sodass kein Schritt durch einen direkten Command-Aufruf (z. B.
+`/onboarding`) umgangen werden kann - siehe `src/services/memberJourneyService.ts` fuer die
+zentrale "welcher Schritt kommt als naechstes"-Logik.
 
 ## Verifizierung
 
@@ -35,6 +45,79 @@ einheitliches Audit-Log (`member.verify` / `member.reject` / `member.reset`).
 
 Verifizierung funktioniert sowohl im Server-Kanal als auch direkt in der Beitritts-DM (der Bot
 sucht dazu ueber alle Server, auf denen er aktiv ist, nach dem passenden Mitglied).
+
+## Teilnehmerprofil (Pflichtangaben)
+
+Direkt nach der Verifizierung muss jedes Mitglied ein Pflichtprofil ausfuellen, bevor es mit
+Onboarding oder Klassenwahl fortfahren kann (`src/services/memberProfileService.ts`):
+
+1. **Vorname, Nachname, Alter** - per Discord-Modal (Button "Angaben machen"). Validierung:
+   Namen nicht leer/max. 50 Zeichen, Alter eine ganze Zahl zwischen 14 und 99. Wird noch NICHT
+   als abgeschlossen markiert.
+2. **COMCAVE-Standort** - `/standort-waehlen standort:<Suche>`. Der Standort-Parameter nutzt
+   Discord-**Autocomplete** (Suche nach Name/Stadt/PLZ, max. 25 Vorschlaege) statt einer festen
+   Auswahlliste, da perspektivisch 300+ Standorte unterstuetzt werden sollen (siehe Abschnitt
+   "COMCAVE-Standorte" unten).
+3. Sobald beides vorliegt, setzt der Bot automatisch den **serverbezogenen Nickname** auf
+   `Vorname Nachname` (`src/services/discordNicknameSync.ts`) - **niemals** den globalen
+   Discord-Benutzernamen. Schlaegt das Setzen fehl (fehlende `ManageNicknames`-Berechtigung oder
+   Server-Owner als Zielperson), wird das ohne Absturz uebersprungen und der restliche Flow laeuft
+   trotzdem weiter.
+
+`assertProfileComplete()` prueft bei jedem nachgelagerten Zugriff (Onboarding, Klassenwahl) frisch,
+ob das Profil vollstaendig ist - ein direkter `/onboarding`-Aufruf vor Profilabschluss wird
+fail-closed abgelehnt.
+
+**Datenschutz:** Vorname/Nachname/Alter/Standort werden ausschliesslich auf `Member` gespeichert
+(kein Geburtsdatum, nur die reine Alterszahl). Weder Audit-Log-Metadaten noch normale Logs oder
+Fehlermeldungen enthalten diese Werte im Klartext - Audit-Eintraege (`member.profile_details_set`,
+`member.location_set`, `member.profile_completed`) speichern ausschliesslich die Namen der
+geaenderten Felder. Der zugeordnete Standort ist standardmaessig nur fuer Admins einsehbar (nicht
+in `/wo-bin-ich` oder anderen fuer alle sichtbaren Ausgaben).
+
+**Kontrollierte Korrektur:** `/mitglied-profil-bearbeiten mitglied:<@Mitglied> [vorname] [nachname]
+[alter] [standort]` (nur Admins) - spaetere Aenderungen laufen bewusst nicht selbstbedienbar ueber
+das Mitglied selbst, sondern nur administrativ, inkl. automatischer Nickname-Synchronisierung bei
+einer Namensaenderung.
+
+## COMCAVE-Standorte
+
+Der Standort-Katalog (`ComcaveLocation`) ist **global**, nicht guild-gebunden - ein COMCAVE-Standort
+ist ein realer, serverunabhaengiger Fakt (anders als Klasse A/B/C, die pro Discord-Server eigens
+angelegt werden). Die Zuordnung eines Mitglieds zu einem Standort (`Member.locationId`) bleibt
+dagegen ganz normal guild-/mitgliedsgebunden.
+
+- Noch **keine echten Standortdaten** enthalten - die Quelldatei
+  (`data/locations/comcave-standorte.json`, Format siehe `data/locations/README.md`) muss von der
+  Administration mit der offiziellen Liste befuellt werden.
+- Import/Aktualisierung ohne Codeaenderung: `/setup-standorte-importieren` (nur Admins) oder
+  `npm run standorte:import`. Beide Wege sind idempotent (Upsert ueber einen stabilen `code`) und
+  deaktivieren (nicht loeschen) Standorte, die in einer aktualisierten Datei fehlen - bestehende
+  Mitglieder-Zuordnungen bleiben dadurch immer gueltig.
+- Suche/Auswahl erfolgt ausschliesslich ueber Discord-Autocomplete (`/standort-waehlen`,
+  `/mitglied-profil-bearbeiten`), nie ueber eine feste Dropdown-Liste (Discords Select-Menu-Limit
+  liegt bei 25 Optionen).
+
+## Serverregeln und Zustimmung
+
+Nach dem Teilnehmerprofil, aber vor dem Onboarding, muss jedes Mitglied den aktuellen Serverregeln
+ausdruecklich zustimmen (`src/services/ruleService.ts`):
+
+- `/regelwerk-aktualisieren text:<...>` (nur Admins) legt eine **neue Version** an
+  (`RuleSet.version`, fortlaufend) und deaktiviert dabei atomar die zuvor aktive Version - nie zwei
+  aktive Versionen gleichzeitig. Eine bestehende Version wird nie nachtraeglich veraendert
+  (Regelversionen sind unveraenderlich), damit eine historische Zustimmung immer nachvollziehbar
+  bleibt.
+- Jedes Mitglied sieht die aktuelle Version (automatisch im Eintrittsflow, jederzeit auch per
+  `/regeln`) und bestaetigt per Button "Ich stimme den Regeln zu". Der Zustimmungsstatus
+  (`RuleAcceptance`) haelt pro Mitglied+Version fest: **wann angezeigt** (`shownAt`), **ob und
+  wann zugestimmt** (`acceptedAt`) und **zu welcher Version**.
+- Ein Regelwerk-Update erzwingt automatisch eine erneute Zustimmung: eine neue Version hat
+  zwangslaeufig noch keine Zustimmungszeile, wodurch `assertRulesAccepted()` (bei jedem
+  nachgelagerten Zugriff frisch geprueft) erneut greift - kein manuelles Zuruecksetzen noetig.
+- `/regelwerk-status` (nur Admins) zeigt die Zustimmungsquote zur aktuellen Version.
+- Audit-Log (`rules.version_created`, `rules.accepted`) speichert nur die Versionsnummer, nie den
+  Regeltext oder personenbezogene Werte.
 
 ## Onboarding
 
@@ -366,6 +449,7 @@ Siehe [`.env.example`](./.env.example) fuer die vollstaendige Liste. Wichtig:
 ```bash
 npm run dev              # Bot im Watch-Modus starten (benoetigt gueltigen DISCORD_TOKEN)
 npm run deploy-commands   # Slash-Commands bei Discord registrieren
+npm run standorte:import  # COMCAVE-Standort-Katalog aus der Quelldatei importieren
 npm run lint              # ESLint
 npm run format            # Prettier (schreibend)
 npm run typecheck          # TypeScript ohne Emit
@@ -432,7 +516,12 @@ src/
                                      (Tages-/Wochenberichte), berichtsheftService.ts (kombinierte
                                      Berichtsheft-Sicht), learningMaterialService.ts
                                      (Lernmaterial), discordRoleSync.ts (gemeinsame
-                                     Rollenvergabe-Fehlerbehandlung)
+                                     Rollenvergabe-Fehlerbehandlung), memberProfileService.ts
+                                     (Teilnehmerprofil), discordNicknameSync.ts
+                                     (Nickname-Synchronisierung), locationImportService.ts
+                                     (COMCAVE-Standort-Import), ruleService.ts (Regelwerk/
+                                     Zustimmung), memberJourneyService.ts (zentrale
+                                     "naechster Schritt"-Logik des Eintrittsflows)
   types/                              Gemeinsame TypeScript-Typen
   utils/                                Logger, Fehlerklassen, dateTime.ts (Datum/Uhrzeit-Parsing)
 prisma/
@@ -456,6 +545,12 @@ tests/                                     Vitest-Tests (siehe Abschnitt "Tests"
 - Rollenvergabe/-entzug wird zentral im Verification-Service behandelt: fehlt dem Bot die
   Berechtigung (z. B. weil seine Rolle in der Hierarchie zu niedrig steht), wird das als
   verstaendliche Fehlermeldung an den Nutzer zurueckgegeben statt eines stillen Fehlschlags.
+- **Zusaetzliche Bot-Permission `ManageNicknames` ("Nicknames verwalten")** wird fuer die
+  automatische Nickname-Synchronisierung im Teilnehmerprofil benoetigt
+  (`GuildMember.setNickname()` erfordert diese Berechtigung, um den Nicknamen eines ANDEREN
+  Mitglieds zu setzen). Fehlt sie, wird das ueber `trySetNickname()`
+  (`src/services/discordNicknameSync.ts`) abgefangen - der restliche Eintrittsflow laeuft dann
+  ohne Nickname-Aenderung weiter, kein Absturz.
 - Onboarding erfasst bewusst nur kategoriale Auswahlantworten (feste Optionslisten), keine
   Freitextfelder - so koennen keine unbeabsichtigten personenbezogenen Details erfasst werden.
   Jede eingehende Antwort wird zusaetzlich serverseitig gegen die erlaubten Optionen validiert

@@ -5,6 +5,8 @@ import { getMemberWithClass, setMemberClass } from '../repositories/memberReposi
 import { logAuditEvent } from '../repositories/auditLogRepository.js';
 import { addRoleOrThrow, removeRoleOrThrow } from './discordRoleSync.js';
 import { assertMemberVerified } from './verificationService.js';
+import { assertProfileComplete } from './memberProfileService.js';
+import { assertRulesAccepted } from './ruleService.js';
 import { ValidationError } from '../utils/errors.js';
 import type { ClassName } from '../types/domain.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -38,6 +40,8 @@ export async function assignClass(
   actorDiscordId: string,
 ): Promise<ClassAssignmentResult> {
   await assertMemberVerified(guildConfig.id, targetMember.id);
+  await assertProfileComplete(guildConfig.id, targetMember.id);
+  await assertRulesAccepted(guildConfig.id, targetMember.id);
 
   const targetClass = await getClassByName(guildConfig.id, className);
   if (!targetClass || !targetClass.roleId) {
@@ -117,6 +121,8 @@ export async function getCurrentClassName(
   discordId: string,
 ): Promise<ClassName | null> {
   await assertMemberVerified(guildId, discordId);
+  await assertProfileComplete(guildId, discordId);
+  await assertRulesAccepted(guildId, discordId);
   const memberRow = await getMemberWithClass(guildId, discordId);
   return (memberRow?.class?.name as ClassName | undefined) ?? null;
 }

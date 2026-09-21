@@ -8,6 +8,8 @@ import {
   type OnboardingQuestionKey,
 } from './onboardingFlow.js';
 import { assertMemberVerified } from './verificationService.js';
+import { assertProfileComplete } from './memberProfileService.js';
+import { assertRulesAccepted } from './ruleService.js';
 import type { ItExperienceLevel } from '../types/domain.js';
 import { createChildLogger } from '../utils/logger.js';
 
@@ -29,6 +31,8 @@ export async function getOnboardingState(
   discordId: string,
 ): Promise<OnboardingState> {
   const member = await assertMemberVerified(guildId, discordId);
+  await assertProfileComplete(guildId, discordId);
+  await assertRulesAccepted(guildId, discordId);
   const answers = await getLatestAnswers(member.id);
   const nextQuestion = getNextQuestion(answers);
   return { answers, nextQuestion, complete: nextQuestion === null };
@@ -48,6 +52,8 @@ export async function submitAnswer(
   rawValues: string[],
 ): Promise<OnboardingState> {
   const member = await assertMemberVerified(guildId, discordId);
+  await assertProfileComplete(guildId, discordId);
+  await assertRulesAccepted(guildId, discordId);
   const values = validateAnswer(question, rawValues);
 
   await recordAnswer(member.id, question, values);

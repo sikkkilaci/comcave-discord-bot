@@ -156,3 +156,25 @@ export const LEARNING_MATERIAL_LINK_TYPE_LABELS: Record<LearningMaterialLinkType
   DAILY_REPORT: 'Tagesbericht',
   WEEKLY_REPORT: 'Wochenbericht',
 };
+
+/**
+ * Validierung fuer die Pflichtangaben des Teilnehmerprofils (siehe
+ * memberProfileService.ts). Namen bewusst nur auf Laenge/Nicht-Leerheit
+ * geprueft (keine Zeichensatz-Einschraenkung, da echte Vor-/Nachnamen
+ * Bindestriche, Umlaute, Apostrophe etc. enthalten koennen). Alter als reine
+ * Zahl (kein Geburtsdatum, siehe Datenschutz-Analyse) mit plausiblem Bereich.
+ */
+export const PERSON_NAME_MAX_LENGTH = 50;
+export const personNameSchema = z
+  .string()
+  .trim()
+  .min(1, 'Darf nicht leer sein.')
+  .max(PERSON_NAME_MAX_LENGTH, `Darf hoechstens ${PERSON_NAME_MAX_LENGTH} Zeichen lang sein.`);
+
+export const MIN_AGE = 14;
+export const MAX_AGE = 99;
+export const ageSchema = z
+  .number()
+  .int('Muss eine ganze Zahl sein.')
+  .min(MIN_AGE, `Muss mindestens ${MIN_AGE} sein.`)
+  .max(MAX_AGE, `Muss hoechstens ${MAX_AGE} sein.`);

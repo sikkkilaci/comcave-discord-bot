@@ -1,4 +1,4 @@
-import type { Class, Member } from '@prisma/client';
+import type { Class, ComcaveLocation, Member } from '@prisma/client';
 import { prisma } from '../db/client.js';
 import type { ItExperienceLevel, VerificationStatus } from '../types/domain.js';
 
@@ -97,6 +97,50 @@ export async function updateMemberProfile(
   guildId: string,
   discordId: string,
   data: MemberProfileUpdate,
+): Promise<Member> {
+  await getOrCreateMember(guildId, discordId);
+  return prisma.member.update({
+    where: { guildId_discordId: { guildId, discordId } },
+    data,
+  });
+}
+
+export type MemberWithLocation = Member & { location: ComcaveLocation | null };
+
+/** Wie getMember(), laedt aber zusaetzlich den zugeordneten COMCAVE-Standort (falls vorhanden). */
+export async function getMemberWithLocation(
+  guildId: string,
+  discordId: string,
+): Promise<MemberWithLocation | null> {
+  return prisma.member.findUnique({
+    where: { guildId_discordId: { guildId, discordId } },
+    include: { location: true },
+  });
+}
+
+/**
+ * Pflichtangaben des Teilnehmerprofils (siehe memberProfileService.ts).
+ * Getrennt von MemberProfileUpdate (Onboarding-Denormalisierung), da
+ * inhaltlich ein eigener, vorgelagerter Schritt mit eigenen personenbezogenen
+ * Feldern.
+ */
+export interface PersonalDetailsUpdate {
+  firstName?: string;
+  lastName?: string;
+  age?: number;
+  locationId?: string;
+  profileCompletedAt?: Date;
+}
+
+/** Anzahl verifizierter Mitglieder einer Guild - fuer /regelwerk-status (Zustimmungsquote). */
+export async function countVerifiedMembers(guildId: string): Promise<number> {
+  return prisma.member.count({ where: { guildId, verificationStatus: 'VERIFIED' } });
+}
+
+export async function updatePersonalDetails(
+  guildId: string,
+  discordId: string,
+  data: PersonalDetailsUpdate,
 ): Promise<Member> {
   await getOrCreateMember(guildId, discordId);
   return prisma.member.update({

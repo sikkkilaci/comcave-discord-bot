@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
-import { getMember, setVerificationStatus } from '../src/repositories/memberRepository.js';
+import {
+  getMember,
+  setVerificationStatus,
+  updatePersonalDetails,
+} from '../src/repositories/memberRepository.js';
 import { listAuditEvents } from '../src/repositories/auditLogRepository.js';
+import { createNewActiveRuleSet } from '../src/repositories/ruleSetRepository.js';
+import { acceptRules } from '../src/repositories/ruleAcceptanceRepository.js';
 import {
   assertMemberVerified,
   getOnboardingState,
@@ -14,10 +20,14 @@ function uniqueIds(): { guildId: string; discordId: string } {
   return { guildId: `guild-${randomUUID()}`, discordId: `discord-${randomUUID()}` };
 }
 
+/** Verifiziert + Profil vollstaendig + Regeln akzeptiert - der "startklar fuer Onboarding"-Zustand. */
 async function createVerifiedMember(): Promise<{ guildId: string; discordId: string }> {
   const { guildId, discordId } = uniqueIds();
   await getOrCreateGuildConfig(guildId);
   await setVerificationStatus(guildId, discordId, 'VERIFIED');
+  await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
+  const ruleSet = await createNewActiveRuleSet(guildId, 'Testregeln', 'admin-test');
+  await acceptRules(guildId, discordId, ruleSet.id);
   return { guildId, discordId };
 }
 
@@ -177,5 +187,61 @@ describe('onboardingService', () => {
       // Alte INTERESTS-Antwort bleibt erhalten, bis sie explizit neu beantwortet wird.
       expect(JSON.parse(member?.interests ?? '[]')).toEqual(['SONSTIGES']);
     });
+  });
+
+  describe('Profil-/Regel-Guard (Umgehungsschutz)', () => {
+    it('getOnboardingState wirft PermissionError, wenn das Profil trotz Verifizierung nicht vollstaendig ist', async () => {
+      const { guildId, discordId } = uniqueIds();
+      await getOrCreateGuildConfig(guildId);
+      await setVerificationStatus(guildId, discordId, 'VERIFIED');
+
+      await expect(getOnboardingState(guildId, discordId)).rejects.toBeInstanceOf(PermissionError);
+    });
+
+    it(
+      'submitAnswer wirft PermissionError, wenn das Profil trotz Verifizierung nicht vollstaendig ist ' +
+        '(kein Umgehen der Pflichtangaben durch direkten /onboarding-Aufruf)',
+      async () => {
+        const { guildId, discordId } = uniqueIds();
+        await getOrCreateGuildConfig(guildId);
+        await setVerificationStatus(guildId, discordId, 'VERIFIED');
+
+        await expect(
+          submitAnswer(guildId, discordId, 'IT_EXPERIENCE', ['ANFAENGER']),
+        ).rejects.toBeInstanceOf(PermissionError);
+      },
+    );
+
+    it(
+      'getOnboardingState wirft PermissionError, wenn das Profil vollstaendig ist, aber die aktuellen ' +
+        'Regeln noch nicht akzeptiert wurden',
+      async () => {
+        const { guildId, discordId } = uniqueIds();
+        await getOrCreateGuildConfig(guildId);
+        await setVerificationStatus(guildId, discordId, 'VERIFIED');
+        await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
+        await createNewActiveRuleSet(guildId, 'Testregeln', 'admin-test');
+
+        await expect(getOnboardingState(guildId, discordId)).rejects.toBeInstanceOf(
+          PermissionError,
+        );
+      },
+    );
+
+    it(
+      'submitAnswer wirft erneut PermissionError, wenn nach einem Regelwerk-Update noch nicht der ' +
+        'neuen Version zugestimmt wurde (keine dauerhafte Umgehung durch alte Zustimmung)',
+      async () => {
+        const { guildId, discordId } = await createVerifiedMember();
+        await submitAnswer(guildId, discordId, 'IT_EXPERIENCE', ['KEINE']);
+
+        // Neue Regelversion - die bisherige Zustimmung bezieht sich nur auf die alte Version.
+        await createNewActiveRuleSet(guildId, 'Aktualisierte Testregeln', 'admin-test');
+
+        await expect(
+          submitAnswer(guildId, discordId, 'INTERESTS', ['SONSTIGES']),
+        ).rejects.toBeInstanceOf(PermissionError);
+      },
+    );
   });
 });

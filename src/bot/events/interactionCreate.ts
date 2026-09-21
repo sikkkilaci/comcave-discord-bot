@@ -1,9 +1,11 @@
 import {
   MessageFlags,
+  type AutocompleteInteraction,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type GuildMember,
   type Interaction,
+  type ModalSubmitInteraction,
   type RepliableInteraction,
   type StringSelectMenuInteraction,
 } from 'discord.js';
@@ -14,14 +16,27 @@ import { hasPermissionLevel } from '../../permissions/checkPermission.js';
 import { setMemberVerification } from '../../services/verificationService.js';
 import { assertMemberVerified, submitAnswer } from '../../services/onboardingService.js';
 import { assignClass } from '../../services/classService.js';
+import {
+  assertProfileComplete,
+  submitPersonalDetails,
+} from '../../services/memberProfileService.js';
+import { assertRulesAccepted, acceptCurrentRules } from '../../services/ruleService.js';
+import { buildSafeNextStepReplyPart } from '../journeyFlow.js';
 import { VERIFY_BUTTON_CUSTOM_ID } from '../ui/verificationMessage.js';
 import {
   ONBOARDING_RESTART_CUSTOM_ID,
   buildOnboardingMessageForState,
   buildOnboardingStepMessage,
-  buildSafeOnboardingReplyPart,
   parseAnswerCustomId,
 } from '../ui/onboardingMessage.js';
+import {
+  PROFILE_DETAILS_BUTTON_CUSTOM_ID,
+  PROFILE_DETAILS_INPUT_IDS,
+  PROFILE_DETAILS_MODAL_CUSTOM_ID,
+  buildProfileDetailsModal,
+  buildProfileDetailsSavedMessage,
+} from '../ui/profileMessage.js';
+import { RULES_ACCEPT_BUTTON_CUSTOM_ID } from '../ui/rulesMessage.js';
 import { buildClassSelectionMessage, parseClassCustomId } from '../ui/classMessage.js';
 import {
   buildCoursePlanOverviewMessage,
@@ -33,7 +48,7 @@ import {
 } from '../../services/coursePlanService.js';
 import { findGuildMemberAcrossGuilds } from '../discordHelpers.js';
 import { CLASS_NAME_LABELS, type ClassName } from '../../types/domain.js';
-import { AppError } from '../../utils/errors.js';
+import { AppError, ValidationError } from '../../utils/errors.js';
 import { createChildLogger } from '../../utils/logger.js';
 
 const logger = createChildLogger('event:interactionCreate');
@@ -53,6 +68,16 @@ const event: BotEvent<'interactionCreate'> = {
 
     if (interaction.isStringSelectMenu()) {
       await handleSelectMenu(interaction);
+      return;
+    }
+
+    if (interaction.isModalSubmit()) {
+      await handleModalSubmit(interaction);
+      return;
+    }
+
+    if (interaction.isAutocomplete()) {
+      await handleAutocomplete(interaction);
     }
   },
 };
@@ -105,7 +130,7 @@ async function handleChatInputCommand(interaction: ChatInputCommandInteraction):
  * gesucht, auf denen der Bot aktiv ist.
  */
 async function resolveInteractionMember(
-  interaction: ButtonInteraction | StringSelectMenuInteraction,
+  interaction: ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction,
 ): Promise<GuildMember | null> {
   if (interaction.inGuild()) return interaction.member as GuildMember;
   return findGuildMemberAcrossGuilds(interaction.client.guilds.cache.values(), interaction.user.id);
@@ -132,6 +157,16 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
+  if (interaction.customId === PROFILE_DETAILS_BUTTON_CUSTOM_ID) {
+    await handleProfileDetailsButton(interaction);
+    return;
+  }
+
+  if (interaction.customId === RULES_ACCEPT_BUTTON_CUSTOM_ID) {
+    await handleRulesAcceptButton(interaction);
+    return;
+  }
+
   const ackCourseEntryId = parseCoursePlanAckCustomId(interaction.customId);
   if (ackCourseEntryId) {
     await handleCoursePlanAck(interaction, ackCourseEntryId);
@@ -149,13 +184,19 @@ async function handleVerifyButton(interaction: ButtonInteraction): Promise<void>
     const guildConfig = await getOrCreateGuildConfig(member.guild.id);
     const result = await setMemberVerification(member, guildConfig, 'VERIFIED', member.id);
 
-    const content = result.changed
+    const verifyContent = result.changed
       ? 'Du wurdest erfolgreich verifiziert! Willkommen in der Lerngruppe. 🎉'
       : 'Du bist bereits verifiziert.';
 
-    const onboardingPart = await buildSafeOnboardingReplyPart(member.guild.id, member.id);
+    const nextPart = await buildSafeNextStepReplyPart(member.guild.id, member.id);
+    const content = [verifyContent, nextPart.content].filter(Boolean).join('\n\n');
 
-    await interaction.reply({ content, ...onboardingPart, flags: MessageFlags.Ephemeral });
+    await interaction.reply({
+      content,
+      embeds: nextPart.embeds ?? [],
+      components: nextPart.components ?? [],
+      flags: MessageFlags.Ephemeral,
+    });
   } catch (error) {
     await handleInteractionError(interaction, error);
   }
@@ -170,10 +211,98 @@ async function handleOnboardingRestart(interaction: ButtonInteraction): Promise<
     }
 
     await assertMemberVerified(member.guild.id, member.id);
+    await assertProfileComplete(member.guild.id, member.id);
+    await assertRulesAccepted(member.guild.id, member.id);
     const { embeds, components } = buildOnboardingStepMessage('IT_EXPERIENCE');
     await interaction.update({ embeds, components });
   } catch (error) {
     await handleInteractionError(interaction, error);
+  }
+}
+
+/** Oeffnet das Pflichtangaben-Modal (Vorname/Nachname/Alter). Discord erlaubt showModal() nur als Erstantwort. */
+async function handleProfileDetailsButton(interaction: ButtonInteraction): Promise<void> {
+  try {
+    await interaction.showModal(buildProfileDetailsModal());
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+async function handleModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
+  if (interaction.customId === PROFILE_DETAILS_MODAL_CUSTOM_ID) {
+    await handleProfileDetailsModalSubmit(interaction);
+  }
+}
+
+async function handleProfileDetailsModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const vorname = interaction.fields.getTextInputValue(PROFILE_DETAILS_INPUT_IDS.vorname);
+    const nachname = interaction.fields.getTextInputValue(PROFILE_DETAILS_INPUT_IDS.nachname);
+    const alterRaw = interaction.fields.getTextInputValue(PROFILE_DETAILS_INPUT_IDS.alter);
+    const alter = Number.parseInt(alterRaw.trim(), 10);
+    if (!Number.isFinite(alter)) {
+      throw new ValidationError('Alter: muss eine ganze Zahl sein.');
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    await submitPersonalDetails(guildConfig, member, { vorname, nachname, alter }, member.id);
+
+    const { embeds, components } = buildProfileDetailsSavedMessage();
+    await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/**
+ * Verarbeitet den Klick auf "Ich stimme den Regeln zu". Die zu bestaetigende
+ * Version wird immer serverseitig aufgeloest (acceptCurrentRules() ->
+ * getActiveRuleSet()), nie aus der customId - ein Klick auf eine veraltete
+ * Regel-Nachricht bestaetigt daher immer die AKTUELLE Version, nie eine
+ * bereits abgeloeste.
+ */
+async function handleRulesAcceptButton(interaction: ButtonInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    await acceptCurrentRules(guildConfig, member, member.id);
+
+    const nextPart = await buildSafeNextStepReplyPart(member.guild.id, member.id);
+    await interaction.update({
+      content: nextPart.content ?? null,
+      embeds: nextPart.embeds ?? [],
+      components: nextPart.components ?? [],
+    });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const client = interaction.client as BotClient;
+  const command = client.commands.get(interaction.commandName);
+
+  if (!command?.autocomplete) return;
+
+  try {
+    await command.autocomplete(interaction);
+  } catch (error) {
+    logger.error(
+      { err: error, command: interaction.commandName, user: interaction.user.id },
+      'Autocomplete-Anfrage fehlgeschlagen',
+    );
   }
 }
 

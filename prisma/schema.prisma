@@ -48,6 +48,8 @@ model GuildConfig {
   courseUpcomingNotifications CourseUpcomingNotification[]
   studyGroups                 StudyGroup[]
   studyGroupMembers           StudyGroupMember[]
+  ruleSets                    RuleSet[]
+  ruleAcceptances             RuleAcceptance[]
 }
 
 /// Ein Mitglied der Lerngruppe, verknuepft mit seinem Discord-Account.
@@ -76,8 +78,47 @@ model Member {
   classId String?
   class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
 
+  // Pflicht-Teilnehmerprofil (Vorname/Nachname/Alter/COMCAVE-Standort), das
+  // vor dem eigentlichen Onboarding erfasst werden muss (siehe
+  // memberProfileService.ts). `profileCompletedAt` ist das Gate-Flag, das
+  // assertProfileComplete() prueft - bewusst kein Geburtsdatum, nur das
+  // erfragte Alter als Zahl (Datensparsamkeit).
+  firstName          String?
+  lastName           String?
+  age                Int?
+  locationId         String?
+  location           ComcaveLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  profileCompletedAt DateTime?
+
   @@unique([guildId, discordId])
   @@index([classId])
+  @@index([locationId])
+}
+
+/// Katalog der COMCAVE-Kurs-/Niederlassungsstandorte (NICHT Wohnort/GPS).
+/// Bewusst GLOBAL statt guild-gescoped: ein COMCAVE-Standort ist ein realer,
+/// serverunabhaengiger Fakt (anders als Klasse A/B/C, die pro Discord-Server
+/// eigens angelegt werden) - die Guild-Isolation betrifft die *Zuordnung*
+/// eines Mitglieds zu einem Standort (Member.locationId, guild-gebunden ueber
+/// Member), nicht diesen gemeinsamen Katalog. Ueber eine versionierte
+/// Quelldatei importierbar (siehe locationImportService.ts), damit die Liste
+/// ohne Codeaenderung aktualisiert werden kann. `isActive` statt Loeschen,
+/// damit ein veralteter Standort keine bestehende Member-Zuordnung zerstoert
+/// (siehe onDelete: SetNull oben).
+model ComcaveLocation {
+  id         String   @id @default(cuid())
+  code       String   @unique // stabiler externer Schluessel aus der Quelldatei, fuer idempotenten Import
+  name       String // Standortname, z. B. "COMCAVE Koeln"
+  city       String
+  postalCode String
+  isActive   Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members Member[]
+
+  @@index([isActive])
 }
 
 /// Antwort auf eine (ggf. dynamisch gestellte) Onboarding-Frage.
@@ -444,4 +485,54 @@ model StudyGroupMember {
 
   @@unique([studyGroupId, memberDiscordId])
   @@index([guildId, classId])
+}
+
+/// Eine Version des Serverregelwerks. Guild-gescoped (anders als
+/// ComcaveLocation ist ein Regelwerk genuin serverspezifisch, analog zu
+/// GuildConfig). Eine neue Version wird IMMER als neue Zeile angelegt, nie
+/// als In-Place-Aenderung einer bestehenden - eine historische Zustimmung zu
+/// Version 3 bleibt dadurch auch dann korrekt nachvollziehbar, wenn Version 4
+/// den Text spaeter aendert (siehe ruleService.ts). Pro Guild ist immer
+/// genau eine Version `isActive: true` (durchgesetzt per Transaktion im
+/// Service, nicht per DB-Constraint - SQLite/Prisma kennen keinen partiellen
+/// Unique-Index dafuer).
+model RuleSet {
+  id                 String      @id @default(cuid())
+  guildId            String
+  guild              GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  version            Int
+  content            String // vollstaendiger Regeltext, admin-gepflegt ueber /regelwerk-aktualisieren
+  isActive           Boolean     @default(true)
+  createdByDiscordId String
+
+  createdAt DateTime @default(now())
+
+  acceptances RuleAcceptance[]
+
+  @@unique([guildId, version])
+  @@index([guildId, isActive])
+}
+
+/// Zustimmungsstatus eines Mitglieds zu EINER bestimmten Regelwerk-Version -
+/// eindeutig pro Mitglied+Version (`@@unique`), ein erneuter Zustimmungs-
+/// Klick erzeugt daher nie einen zweiten Eintrag (siehe acceptRules() in
+/// ruleAcceptanceRepository.ts). `shownAt` wird gesetzt, sobald die aktuelle
+/// Version tatsaechlich angezeigt wurde, `acceptedAt` erst beim expliziten
+/// Zustimmungs-Klick (`null` = nur angezeigt, noch nicht zugestimmt). Eine
+/// neue RuleSet-Version besitzt zwangslaeufig noch keine Zustimmungszeile -
+/// dadurch erzwingt das Schema selbst eine erneute Zustimmung nach einem
+/// Regelwerk-Update, ganz ohne Zusatzlogik.
+model RuleAcceptance {
+  id              String      @id @default(cuid())
+  guildId         String
+  guild           GuildConfig @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  memberDiscordId String
+  ruleSetId       String
+  ruleSet         RuleSet     @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+
+  shownAt    DateTime  @default(now())
+  acceptedAt DateTime?
+
+  @@unique([memberDiscordId, ruleSetId])
+  @@index([guildId, ruleSetId])
 }
