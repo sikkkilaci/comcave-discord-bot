@@ -26,6 +26,12 @@ function formatResult(result: BootstrapResult): string {
   lines.push(`- ${formatObject('Log', result.logChannel)}`);
 
   lines.push('');
+  lines.push('**Globale Plattformstruktur**');
+  lines.push(`- Kategorien neu: ${result.globalStructure.categoriesCreated.length}`);
+  lines.push(`- Kanäle neu: ${result.globalStructure.channelsCreated.length}`);
+  lines.push(`- Kanäle wiederverwendet/verschoben: ${result.globalStructure.channelsReused.length}`);
+
+  lines.push('');
   lines.push('**Private Klassenbereiche**');
   for (const name of CLASS_NAMES) {
     const area = result.classes[name].area;
