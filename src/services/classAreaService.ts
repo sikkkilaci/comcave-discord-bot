@@ -5,6 +5,7 @@ import {
   type Guild,
   type GuildChannelCreateOptions,
   type OverwriteResolvable,
+  type ReadonlyCollection,
 } from 'discord.js';
 import type { Class, GuildConfig } from '@prisma/client';
 import { updateClassChannels, type ClassChannelUpdate } from '../repositories/classRepository.js';
@@ -288,17 +289,110 @@ async function fetchChannelSafely(guild: Guild, channelId: string): Promise<{ id
   }
 }
 
+/**
+ * Menschenlesbare Namen fuer alle Berechtigungs-Bits, die in diesem Modul
+ * jemals per Kanal-Overwrite an eine Rolle vergeben werden (siehe
+ * buildOverwrites()/CLASS_LEAD_CHANNEL_PERMISSIONS) - wird nur fuer
+ * Fehlermeldungen benoetigt, nicht fuer die eigentliche Pruefung.
+ */
+const PERMISSION_LABELS = new Map<bigint, string>([
+  [PermissionFlagsBits.ManageChannels, 'Kanaele verwalten'],
+  [PermissionFlagsBits.ViewChannel, 'Kanal ansehen'],
+  [PermissionFlagsBits.SendMessages, 'Nachrichten senden'],
+  [PermissionFlagsBits.ReadMessageHistory, 'Nachrichtenverlauf anzeigen'],
+  [PermissionFlagsBits.Connect, 'Verbinden'],
+  [PermissionFlagsBits.Speak, 'Sprechen'],
+  [PermissionFlagsBits.AttachFiles, 'Dateien anhaengen'],
+  [PermissionFlagsBits.EmbedLinks, 'Links einbetten'],
+  [PermissionFlagsBits.ManageMessages, 'Nachrichten verwalten'],
+  [PermissionFlagsBits.CreatePublicThreads, 'Oeffentliche Threads erstellen'],
+  [PermissionFlagsBits.CreatePrivateThreads, 'Private Threads erstellen'],
+  [PermissionFlagsBits.SendMessagesInThreads, 'Nachrichten in Threads senden'],
+  [PermissionFlagsBits.ManageThreads, 'Threads verwalten'],
+  [PermissionFlagsBits.MentionEveryone, '@everyone erwaehnen'],
+  [PermissionFlagsBits.MuteMembers, 'Mitglieder stummschalten'],
+  [PermissionFlagsBits.DeafenMembers, 'Mitglieder isolieren'],
+  [PermissionFlagsBits.MoveMembers, 'Mitglieder verschieben'],
+  [PermissionFlagsBits.ModerateMembers, 'Mitglieder timeouten'],
+]);
+
+function permissionLabel(bit: bigint): string {
+  return PERMISSION_LABELS.get(bit) ?? bit.toString();
+}
+
+/**
+ * Extrahiert alle Berechtigungs-Bits, die per `allow` in den hier
+ * konstruierten Overwrites vergeben werden. Dieses Modul baut Overwrites
+ * ausschliesslich selbst (buildOverwrites()) und immer als `bigint[]` - eine
+ * andere Form (String-Permission-Namen, PermissionsBitField-Instanz) kommt
+ * hier nie vor, wird defensiv aber einfach ignoriert statt einen Fehler zu
+ * werfen.
+ */
+function collectAllowedBits(
+  overwrites: readonly OverwriteResolvable[] | ReadonlyCollection<string, OverwriteResolvable>,
+): bigint[] {
+  const bits: bigint[] = [];
+  for (const overwrite of overwrites.values()) {
+    const allow = (overwrite as { allow?: unknown }).allow;
+    if (Array.isArray(allow)) {
+      for (const bit of allow) {
+        if (typeof bit === 'bigint') bits.push(bit);
+      }
+    }
+  }
+  return bits;
+}
+
+/**
+ * Discord erlaubt einer Rolle/einem Bot nur, per Kanal-Overwrite eine
+ * Berechtigung an eine ANDERE Rolle zu vergeben, wenn der Bot diese
+ * Berechtigung selbst besitzt (effektive Guild-Berechtigung, da der Bot
+ * selbst keinen eigenen Overwrite-Eintrag in buildOverwrites() erhaelt) -
+ * andernfalls lehnt Discord den GESAMTEN Kanal-Anlegen-Aufruf mit demselben
+ * generischen 403/50013 "Missing Permissions" ab wie bei einer fehlenden
+ * "Kanaele verwalten"-Berechtigung. Ohne diese Vorab-Pruefung wuerde
+ * createChannelOrThrow() faelschlich IMMER "Kanaele verwalten" als Ursache
+ * melden, selbst wenn der Bot diese Berechtigung laengst hat und in
+ * Wirklichkeit z. B. "Verbinden"/"Sprechen" fehlt (beide werden von
+ * buildOverwrites() auch fuer Text-Kanaele an Klassen-/Admin-Rolle vergeben,
+ * nicht nur fuer den Sprachkanal). Wirft ValidationError mit den tatsaechlich
+ * fehlenden Berechtigungen, statt zu raten.
+ */
+async function assertBotCanApplyOverwrites(
+  guild: Guild,
+  overwrites: readonly OverwriteResolvable[] | ReadonlyCollection<string, OverwriteResolvable>,
+): Promise<void> {
+  const me = guild.members.me ?? (await guild.members.fetchMe());
+  if (me.permissions.has(PermissionFlagsBits.Administrator)) return;
+
+  const required = new Set<bigint>([
+    PermissionFlagsBits.ManageChannels,
+    ...collectAllowedBits(overwrites),
+  ]);
+  const missing = [...required].filter((bit) => !me.permissions.has(bit));
+  if (missing.length === 0) return;
+
+  throw new ValidationError(
+    'Mir fehlen folgende Berechtigungen, um diesen Kanal (inklusive der vorgesehenen Rollen-' +
+      `Overwrites) anzulegen: ${missing.map(permissionLabel).join(', ')}. Ich kann per Kanal-` +
+      'Overwrite keine Berechtigung an eine andere Rolle vergeben, die ich selbst nicht besitze - ' +
+      'bitte pruefe meine Server-Berechtigungen entsprechend.',
+  );
+}
+
 async function createChannelOrThrow(
   guild: Guild,
   options: GuildChannelCreateOptions,
 ): Promise<{ id: string }> {
+  await assertBotCanApplyOverwrites(guild, options.permissionOverwrites ?? []);
+
   try {
     return await guild.channels.create(options);
   } catch (error) {
     if (error instanceof DiscordAPIError && error.code === DISCORD_MISSING_PERMISSIONS) {
       throw new ValidationError(
-        'Mir fehlt die Berechtigung "Kanaele verwalten", um den Klassenbereich anzulegen. ' +
-          'Bitte pruefe meine Server-Berechtigungen.',
+        'Mir fehlt eine Berechtigung, um diesen Kanal anzulegen (z. B. "Kanaele verwalten" oder ' +
+          'eine per Overwrite vergebene Berechtigung). Bitte pruefe meine Server-Berechtigungen.',
       );
     }
     throw error;

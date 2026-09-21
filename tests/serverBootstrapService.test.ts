@@ -171,7 +171,12 @@ function fakeGuild(options: {
   });
 
   const botTopRolePosition = options.botTopRolePosition ?? 100;
-  const me = { roles: { highest: { position: botTopRolePosition } } };
+  // permissions.has() liefert immer true: diese Tests decken den Bootstrap-Ablauf ab, nicht die
+  // Overwrite-Berechtigungspruefung aus classAreaService.ts (siehe dortige eigene Tests dafuer).
+  const me = {
+    roles: { highest: { position: botTopRolePosition } },
+    permissions: { has: () => true },
+  };
 
   const guild = {
     id: guildId,

@@ -31,12 +31,42 @@ function fakeIdFor(opts: FakeCreateOptions): string {
   return opts.type === ChannelType.GuildCategory ? `category:${opts.name}` : `channel:${opts.name}`;
 }
 
+/**
+ * Alle Berechtigungs-Bits, die dieses Modul jemals per Overwrite vergibt
+ * (siehe buildOverwrites()/CLASS_LEAD_CHANNEL_PERMISSIONS in classAreaService.ts),
+ * plus ManageChannels selbst - als Default fuer den Fake-Bot verwendet, damit
+ * bestehende Tests (die diese Berechtigungs-Vorabpruefung nicht betreffen)
+ * unveraendert weiterlaufen.
+ */
+const ALL_RELEVANT_BOT_PERMISSIONS = new Set<bigint>([
+  PermissionFlagsBits.ManageChannels,
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.ReadMessageHistory,
+  PermissionFlagsBits.Connect,
+  PermissionFlagsBits.Speak,
+  PermissionFlagsBits.AttachFiles,
+  PermissionFlagsBits.EmbedLinks,
+  PermissionFlagsBits.ManageMessages,
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+  PermissionFlagsBits.SendMessagesInThreads,
+  PermissionFlagsBits.ManageThreads,
+  PermissionFlagsBits.MentionEveryone,
+  PermissionFlagsBits.MuteMembers,
+  PermissionFlagsBits.DeafenMembers,
+  PermissionFlagsBits.MoveMembers,
+  PermissionFlagsBits.ModerateMembers,
+]);
+
 function fakeGuild(options: {
   existingChannelIds?: Set<string>;
   createImpl?: (opts: FakeCreateOptions) => Promise<{ id: string }>;
+  botPermissions?: Set<bigint>;
 }): { guild: Guild; createCalls: FakeCreateOptions[] } {
   const existing = options.existingChannelIds ?? new Set<string>();
   const createCalls: FakeCreateOptions[] = [];
+  const botPermissions = options.botPermissions ?? ALL_RELEVANT_BOT_PERMISSIONS;
 
   const create = vi.fn(async (opts: FakeCreateOptions) => {
     createCalls.push(opts);
@@ -49,9 +79,12 @@ function fakeGuild(options: {
     throw new Error('Unknown Channel');
   });
 
+  const me = { permissions: { has: (bit: bigint) => botPermissions.has(bit) } };
+
   const guild = {
     roles: { everyone: { id: EVERYONE_ID } },
     channels: { create, fetch },
+    members: { me, fetchMe: vi.fn(async () => me) },
   } as unknown as Guild;
 
   return { guild, createCalls };
@@ -331,6 +364,60 @@ describe('classAreaService', () => {
       await expect(setupClassArea(guild, guildConfig, klasse, 'actor-1')).rejects.toThrow(
         'Netzwerkfehler',
       );
+    });
+  });
+
+  describe('setupClassArea - Vorab-Pruefung der Bot-Berechtigungen fuer Overwrites', () => {
+    it('nennt "Verbinden"/"Sprechen" als fehlende Berechtigung, wenn der Bot "Kanaele verwalten" hat, aber keine Sprachrechte (Regressionstest fuer den realen E2E-Fehler)', async () => {
+      const { guildConfig, klasse } = await setupGuildAndClass();
+      const botPermissions = new Set(ALL_RELEVANT_BOT_PERMISSIONS);
+      botPermissions.delete(PermissionFlagsBits.Connect);
+      botPermissions.delete(PermissionFlagsBits.Speak);
+      const { guild, createCalls } = fakeGuild({ botPermissions });
+
+      const error = await setupClassArea(guild, guildConfig, klasse, 'actor-1').catch((e) => e);
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as ValidationError).message).toContain('Verbinden');
+      expect((error as ValidationError).message).toContain('Sprechen');
+      // Die Meldung darf NICHT faelschlich "Kanaele verwalten" als fehlend nennen,
+      // wenn der Bot diese Berechtigung tatsaechlich hat - das war der reale Bug.
+      expect((error as ValidationError).message).not.toContain('Kanaele verwalten');
+      // Kein einziger Kanal darf angelegt worden sein - Vorab-Pruefung greift vor dem ersten API-Call.
+      expect(createCalls).toHaveLength(0);
+    });
+
+    it('nennt "Kanaele verwalten" als fehlend, wenn dem Bot genau diese Berechtigung fehlt', async () => {
+      const { guildConfig, klasse } = await setupGuildAndClass();
+      const botPermissions = new Set(ALL_RELEVANT_BOT_PERMISSIONS);
+      botPermissions.delete(PermissionFlagsBits.ManageChannels);
+      const { guild } = fakeGuild({ botPermissions });
+
+      const error = await setupClassArea(guild, guildConfig, klasse, 'actor-1').catch((e) => e);
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as ValidationError).message).toContain('Kanaele verwalten');
+    });
+
+    it('legt den Klassenbereich erfolgreich an, wenn der Bot Administrator ist, auch ohne einzelne Basis-Berechtigungen', async () => {
+      const { guildConfig, klasse } = await setupGuildAndClass();
+      const botPermissions = new Set([PermissionFlagsBits.Administrator]);
+      const { guild, createCalls } = fakeGuild({ botPermissions });
+
+      const result = await setupClassArea(guild, guildConfig, klasse, 'actor-1');
+
+      expect(result.categoryCreated).toBe(true);
+      expect(createCalls.length).toBeGreaterThan(0);
+    });
+
+    it('legt den Klassenbereich weiterhin normal an, wenn der Bot alle benoetigten Berechtigungen hat (kein falsch-positiver Abbruch)', async () => {
+      const { guildConfig, klasse } = await setupGuildAndClass();
+      const { guild } = fakeGuild({});
+
+      const result = await setupClassArea(guild, guildConfig, klasse, 'actor-1');
+
+      expect(result.categoryCreated).toBe(true);
+      expect(result.channelsCreated).toHaveLength(7);
     });
   });
 });
