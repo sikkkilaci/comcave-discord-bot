@@ -13,6 +13,7 @@ function formatResult(result: BootstrapResult): string {
 
   lines.push('**Rollen**');
   lines.push(`- ${formatObject('Verifiziert', result.verifiedRole)}`);
+  lines.push(`- ${formatObject('Mitglied', result.onboardedRole)}`);
   lines.push(`- ${formatObject('Admin', result.adminRole)}`);
   lines.push(`- ${formatObject('Moderator', result.moderatorRole)}`);
   for (const name of CLASS_NAMES) {
@@ -24,6 +25,7 @@ function formatResult(result: BootstrapResult): string {
   lines.push(`- ${formatObject('Verifizierung', result.verificationChannel)}`);
   lines.push(`- ${formatObject('#wo-bin-ich', result.whereAmIChannel)}`);
   lines.push(`- ${formatObject('Log', result.logChannel)}`);
+  lines.push(`- ${formatObject('Schulhof', result.schulhofChannel)}`);
 
   lines.push('');
   lines.push('**Globale Plattformstruktur**');

@@ -33,13 +33,22 @@ interface CategoryBlueprint {
 
 const STRUCTURE: readonly CategoryBlueprint[] = [
   {
+    // Bewusst der EINZIGE Kanal, den ein neu beigetretenes, noch nicht
+    // vollstaendig onboardetes Mitglied sehen kann (siehe
+    // memberJourneyService.ts/grantOnboardedRoleIfComplete()): der komplette
+    // Eintrittsflow (Verifizierung -> Profil -> Standort -> Fachrichtung ->
+    // Klasse -> Onboarding -> Regelwerk) laeuft hier bzw. per DM ab. Die
+    // uebrigen frueher hier oeffentlichen Kanaele (willkommen/regeln/
+    // onboarding/wo-bin-ich) sind jetzt VERIFIED-Kanaele - rein informativ/
+    // zum spaeteren Nachschlagen, nicht mehr Teil des oeffentlichen
+    // Erstkontakts.
     name: '01 · START',
     access: 'PUBLIC',
     channels: [
       {
         name: '👋-willkommen',
         type: ChannelType.GuildText,
-        access: 'PUBLIC',
+        access: 'VERIFIED',
         readOnly: true,
         topic: 'Startpunkt der COMCAVE-Plattform.',
       },
@@ -53,21 +62,21 @@ const STRUCTURE: readonly CategoryBlueprint[] = [
       {
         name: '📜-regeln',
         type: ChannelType.GuildText,
-        access: 'PUBLIC',
+        access: 'VERIFIED',
         readOnly: true,
         topic: 'Aktuelles Serverregelwerk.',
       },
       {
         name: '🧑‍💻-onboarding',
         type: ChannelType.GuildText,
-        access: 'PUBLIC',
+        access: 'VERIFIED',
         readOnly: true,
         topic: 'Persönliches Onboarding über den Bot.',
       },
       {
         name: '🧭-wo-bin-ich',
         type: ChannelType.GuildText,
-        access: 'PUBLIC',
+        access: 'VERIFIED',
         readOnly: true,
         topic: 'Klasse auswählen und Klassenbereich öffnen.',
       },
@@ -276,6 +285,21 @@ const STRUCTURE: readonly CategoryBlueprint[] = [
   },
 ];
 
+/**
+ * Namen aller Kanaele mit Access-Stufe 'PUBLIC' (also fuer @everyone sichtbar,
+ * auch ohne die onboardedRoleId-Rolle) - nur fuer Tests exportiert, die
+ * absichern sollen, dass ein neues, noch nicht vollstaendig onboardetes
+ * Mitglied ausschliesslich den Verifizierungskanal sieht (siehe
+ * memberJourneyService.ts/grantOnboardedRoleIfComplete()).
+ */
+export function getPublicChannelNames(): string[] {
+  return STRUCTURE.flatMap((category) =>
+    category.channels
+      .filter((channel) => channel.access === 'PUBLIC')
+      .map((channel) => channel.name),
+  );
+}
+
 export async function ensureGlobalServerStructure(
   guild: Guild,
   guildConfig: GuildConfig,
@@ -287,7 +311,12 @@ export async function ensureGlobalServerStructure(
     channelsReused: [],
   };
 
-  const verifiedRoleId = guildConfig.verifiedRoleId;
+  // Schaltet die Kanaele der Zugriffsstufe 'VERIFIED' frei - trotz des Namens NICHT
+  // guildConfig.verifiedRoleId, sondern die erst nach dem GESAMTEN Eintrittsflow vergebene
+  // onboardedRoleId (siehe memberJourneyService.ts). Ein Mitglied, das sich nur verifiziert,
+  // aber den Rest des Flows noch nicht abgeschlossen hat, soll ausser dem oeffentlichen
+  // Verifizierungskanal weiterhin nichts sehen.
+  const onboardedRoleId = guildConfig.onboardedRoleId;
   const adminRoleId = guildConfig.adminRoleId;
   const moderatorRoleId = guildConfig.moderatorRoleId;
   const botMember = guild.members.me;
@@ -296,7 +325,7 @@ export async function ensureGlobalServerStructure(
     throw new ValidationError('Die Bot-Rolle konnte für den Serveraufbau nicht ermittelt werden.');
   }
 
-  if (!verifiedRoleId || !adminRoleId || !moderatorRoleId) {
+  if (!onboardedRoleId || !adminRoleId || !moderatorRoleId) {
     throw new ValidationError('Die Grundrollen müssen vor dem Serveraufbau konfiguriert sein.');
   }
 
@@ -313,7 +342,7 @@ export async function ensureGlobalServerStructure(
         permissionOverwrites: buildOverwrites(
           guild,
           categoryBlueprint.access,
-          verifiedRoleId,
+          onboardedRoleId,
           adminRoleId,
           moderatorRoleId,
           botRoleId,
@@ -327,7 +356,7 @@ export async function ensureGlobalServerStructure(
         buildOverwrites(
           guild,
           categoryBlueprint.access,
-          verifiedRoleId,
+          onboardedRoleId,
           adminRoleId,
           moderatorRoleId,
           botRoleId,
@@ -359,7 +388,7 @@ export async function ensureGlobalServerStructure(
             buildOverwrites(
               guild,
               blueprint.access,
-              verifiedRoleId,
+              onboardedRoleId,
               adminRoleId,
               moderatorRoleId,
               botRoleId,
@@ -392,7 +421,7 @@ export async function ensureGlobalServerStructure(
         permissionOverwrites: buildOverwrites(
           guild,
           blueprint.access,
-          verifiedRoleId,
+          onboardedRoleId,
           adminRoleId,
           moderatorRoleId,
           botRoleId,
@@ -414,7 +443,7 @@ export async function ensureGlobalServerStructure(
 export function buildOverwrites(
   guild: Guild,
   access: Access,
-  verifiedRoleId: string,
+  onboardedRoleId: string,
   adminRoleId: string,
   moderatorRoleId: string,
   botRoleId: string,
@@ -442,7 +471,7 @@ export function buildOverwrites(
       deny: [PermissionFlagsBits.ViewChannel],
     });
     overwrites.push({
-      id: verifiedRoleId,
+      id: onboardedRoleId,
       allow: readOnly ? readOnlyMember : memberWrite,
     });
   } else {

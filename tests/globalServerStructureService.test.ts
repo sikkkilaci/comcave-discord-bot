@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Guild, OverwriteResolvable } from 'discord.js';
-import { buildOverwrites } from '../src/services/globalServerStructureService.js';
+import {
+  buildOverwrites,
+  getPublicChannelNames,
+} from '../src/services/globalServerStructureService.js';
 
 function fakeGuild(): Guild {
   return { roles: { everyone: { id: 'role-everyone' } } } as unknown as Guild;
@@ -47,5 +50,16 @@ describe('globalServerStructureService', () => {
       expect(moderatorEntries).toHaveLength(1);
       expect(adminEntries[0]?.allow).toContain(BigInt(1024));
     });
+  });
+
+  describe('Onboarding-Gate: nur EIN oeffentlicher Kanal', () => {
+    it(
+      'ist ausschliesslich der Verifizierungskanal fuer @everyone sichtbar - alle anderen ' +
+        'Kanaele (willkommen/regeln/onboarding/wo-bin-ich etc.) erfordern die Mitglied-Rolle ' +
+        '(echter Vorfall: vor diesem Fix sahen neue, unverifizierte Mitglieder 5 Kanaele statt 1)',
+      () => {
+        expect(getPublicChannelNames()).toEqual(['🔐-verifizierung']);
+      },
+    );
   });
 });

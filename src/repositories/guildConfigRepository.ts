@@ -22,6 +22,7 @@ export async function updateGuildConfig(
       | 'adminRoleId'
       | 'moderatorRoleId'
       | 'verifiedRoleId'
+      | 'onboardedRoleId'
       | 'logChannelId'
       | 'welcomeChannelId'
       | 'whereAmIChannelId'

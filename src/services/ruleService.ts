@@ -8,8 +8,14 @@ import {
   recordShown,
 } from '../repositories/ruleAcceptanceRepository.js';
 import { countVerifiedMembers } from '../repositories/memberRepository.js';
+import { getLatestAnswers } from '../repositories/onboardingRepository.js';
+import { isOnboardingComplete } from './onboardingFlow.js';
 import { logAuditEvent } from '../repositories/auditLogRepository.js';
 import { isServerAdmin } from '../permissions/checkPermission.js';
+import { assertMemberVerified } from './verificationService.js';
+import { assertProfileComplete } from './memberProfileService.js';
+import { assertFachrichtungChosen } from './fachrichtungService.js';
+import { assertClassChosen } from './classService.js';
 import { PermissionError, ValidationError } from '../utils/errors.js';
 
 const NOT_CONFIGURED_MESSAGE =
@@ -65,6 +71,27 @@ export async function updateRules(
 }
 
 /**
+ * Zentraler Guard fuer den Regelwerk-Schritt: Regelzustimmung ist im
+ * Eintrittsflow (siehe memberJourneyService.ts) bewusst der LETZTE Schritt
+ * vor Abschluss - erst Verifizierung, Profil, Standort, Fachrichtung, Klasse
+ * und der bestehende Onboarding-Fragebogen muessen durch sein. Gleiches
+ * Fail-closed-Prinzip wie assertProfileComplete()/assertFachrichtungChosen().
+ */
+async function assertReadyForRulesStep(guildId: string, discordId: string): Promise<string> {
+  const member = await assertMemberVerified(guildId, discordId);
+  await assertProfileComplete(guildId, discordId);
+  await assertFachrichtungChosen(guildId, discordId);
+  await assertClassChosen(guildId, discordId);
+
+  const answers = await getLatestAnswers(member.id);
+  if (!isOnboardingComplete(answers)) {
+    throw new PermissionError('Bitte schliesse zuerst das Onboarding ab.');
+  }
+
+  return member.id;
+}
+
+/**
  * Zeigt einem Mitglied die aktuelle Regelversion (vermerkt `shownAt`) - wird
  * aufgerufen, sobald der Eintrittsflow diesen Schritt tatsaechlich anzeigt.
  * Wirft ValidationError, wenn noch kein Regelwerk konfiguriert ist (Admin
@@ -72,6 +99,8 @@ export async function updateRules(
  * "noch nicht konfiguriert"-Faellen im Projekt).
  */
 export async function showRulesToMember(guildId: string, discordId: string): Promise<RuleSet> {
+  await assertReadyForRulesStep(guildId, discordId);
+
   const ruleSet = await getActiveRuleSet(guildId);
   if (!ruleSet) {
     throw new ValidationError(NOT_CONFIGURED_MESSAGE);
@@ -93,6 +122,8 @@ export async function acceptCurrentRules(
   member: GuildMember,
   actorDiscordId: string,
 ): Promise<RuleSet> {
+  await assertReadyForRulesStep(guildConfig.id, member.id);
+
   const ruleSet = await getActiveRuleSet(guildConfig.id);
   if (!ruleSet) {
     throw new ValidationError(NOT_CONFIGURED_MESSAGE);

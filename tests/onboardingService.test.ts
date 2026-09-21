@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
 import {
   getMember,
+  setMemberClass,
+  setMemberFachrichtung,
   setVerificationStatus,
   updatePersonalDetails,
 } from '../src/repositories/memberRepository.js';
+import { getOrCreateClass } from '../src/repositories/classRepository.js';
 import { listAuditEvents } from '../src/repositories/auditLogRepository.js';
-import { createNewActiveRuleSet } from '../src/repositories/ruleSetRepository.js';
-import { acceptRules } from '../src/repositories/ruleAcceptanceRepository.js';
 import {
   assertMemberVerified,
   getOnboardingState,
@@ -20,14 +21,15 @@ function uniqueIds(): { guildId: string; discordId: string } {
   return { guildId: `guild-${randomUUID()}`, discordId: `discord-${randomUUID()}` };
 }
 
-/** Verifiziert + Profil vollstaendig + Regeln akzeptiert - der "startklar fuer Onboarding"-Zustand. */
+/** Verifiziert + Profil vollstaendig + Fachrichtung + Klasse gewaehlt - der "startklar fuer Onboarding"-Zustand. */
 async function createVerifiedMember(): Promise<{ guildId: string; discordId: string }> {
   const { guildId, discordId } = uniqueIds();
   await getOrCreateGuildConfig(guildId);
   await setVerificationStatus(guildId, discordId, 'VERIFIED');
   await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
-  const ruleSet = await createNewActiveRuleSet(guildId, 'Testregeln', 'admin-test');
-  await acceptRules(guildId, discordId, ruleSet.id);
+  await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
+  const klasse = await getOrCreateClass(guildId, 'A');
+  await setMemberClass(guildId, discordId, klasse.id);
   return { guildId, discordId };
 }
 
@@ -189,7 +191,7 @@ describe('onboardingService', () => {
     });
   });
 
-  describe('Profil-/Regel-Guard (Umgehungsschutz)', () => {
+  describe('Profil-/Fachrichtung-/Klassen-Guard (Umgehungsschutz)', () => {
     it('getOnboardingState wirft PermissionError, wenn das Profil trotz Verifizierung nicht vollstaendig ist', async () => {
       const { guildId, discordId } = uniqueIds();
       await getOrCreateGuildConfig(guildId);
@@ -213,14 +215,13 @@ describe('onboardingService', () => {
     );
 
     it(
-      'getOnboardingState wirft PermissionError, wenn das Profil vollstaendig ist, aber die aktuellen ' +
-        'Regeln noch nicht akzeptiert wurden',
+      'getOnboardingState wirft PermissionError, wenn das Profil vollstaendig ist, aber noch keine ' +
+        'Fachrichtung gewaehlt wurde',
       async () => {
         const { guildId, discordId } = uniqueIds();
         await getOrCreateGuildConfig(guildId);
         await setVerificationStatus(guildId, discordId, 'VERIFIED');
         await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
-        await createNewActiveRuleSet(guildId, 'Testregeln', 'admin-test');
 
         await expect(getOnboardingState(guildId, discordId)).rejects.toBeInstanceOf(
           PermissionError,
@@ -229,18 +230,18 @@ describe('onboardingService', () => {
     );
 
     it(
-      'submitAnswer wirft erneut PermissionError, wenn nach einem Regelwerk-Update noch nicht der ' +
-        'neuen Version zugestimmt wurde (keine dauerhafte Umgehung durch alte Zustimmung)',
+      'getOnboardingState wirft PermissionError, wenn Profil und Fachrichtung da sind, aber noch keine ' +
+        'Klasse gewaehlt wurde',
       async () => {
-        const { guildId, discordId } = await createVerifiedMember();
-        await submitAnswer(guildId, discordId, 'IT_EXPERIENCE', ['KEINE']);
+        const { guildId, discordId } = uniqueIds();
+        await getOrCreateGuildConfig(guildId);
+        await setVerificationStatus(guildId, discordId, 'VERIFIED');
+        await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
+        await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
 
-        // Neue Regelversion - die bisherige Zustimmung bezieht sich nur auf die alte Version.
-        await createNewActiveRuleSet(guildId, 'Aktualisierte Testregeln', 'admin-test');
-
-        await expect(
-          submitAnswer(guildId, discordId, 'INTERESTS', ['SONSTIGES']),
-        ).rejects.toBeInstanceOf(PermissionError);
+        await expect(getOnboardingState(guildId, discordId)).rejects.toBeInstanceOf(
+          PermissionError,
+        );
       },
     );
   });

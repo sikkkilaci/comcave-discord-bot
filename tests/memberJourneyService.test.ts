@@ -1,15 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import type { GuildMember } from 'discord.js';
-import { describe, expect, it } from 'vitest';
-import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  getOrCreateGuildConfig,
+  updateGuildConfig,
+} from '../src/repositories/guildConfigRepository.js';
 import {
   setVerificationStatus,
   updatePersonalDetails,
 } from '../src/repositories/memberRepository.js';
 import { upsertLocation } from '../src/repositories/locationRepository.js';
+import { setMemberClass, setMemberFachrichtung } from '../src/repositories/memberRepository.js';
+import { getOrCreateClass } from '../src/repositories/classRepository.js';
 import { updateRules, acceptCurrentRules } from '../src/services/ruleService.js';
 import { submitAnswer } from '../src/services/onboardingService.js';
-import { resolveNextJourneyStep } from '../src/services/memberJourneyService.js';
+import {
+  grantOnboardedRoleIfComplete,
+  resolveNextJourneyStep,
+} from '../src/services/memberJourneyService.js';
 
 function fakeMember(id: string, isAdministrator = false): GuildMember {
   return {
@@ -17,6 +25,22 @@ function fakeMember(id: string, isAdministrator = false): GuildMember {
     guild: { ownerId: 'someone-else' },
     permissions: { has: () => isAdministrator },
     roles: { cache: { has: () => false } },
+  } as unknown as GuildMember;
+}
+
+/** Wie fakeMember(), aber mit einem echten (mockbaren) roles.add()/cache.has() fuer die Rollenvergabe. */
+function fakeMemberWithRoles(id: string, initialRoleIds: string[] = []): GuildMember {
+  const roleIds = new Set(initialRoleIds);
+  return {
+    id,
+    guild: { ownerId: 'someone-else' },
+    permissions: { has: () => false },
+    roles: {
+      cache: { has: (roleId: string) => roleIds.has(roleId) },
+      add: vi.fn(async (roleId: string) => {
+        roleIds.add(roleId);
+      }),
+    },
   } as unknown as GuildMember;
 }
 
@@ -55,10 +79,8 @@ describe('resolveNextJourneyStep', () => {
     expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_LOCATION');
   });
 
-  it('NEEDS_RULES_ACCEPTANCE, wenn das Profil vollstaendig ist, aber noch nicht den aktuellen Regeln zugestimmt wurde', async () => {
-    const guildId = `guild-${randomUUID()}`;
-    const guildConfig = await getOrCreateGuildConfig(guildId);
-    const discordId = `discord-${randomUUID()}`;
+  /** Verifiziert + Profil + Standort komplett - Zustand direkt vor der Fachrichtungswahl. */
+  async function prepareUntilLocation(guildId: string, discordId: string): Promise<void> {
     await setVerificationStatus(guildId, discordId, 'VERIFIED');
     const { location } = await upsertLocation({
       code: `code-${randomUUID()}`,
@@ -74,40 +96,76 @@ describe('resolveNextJourneyStep', () => {
       locationId: location.id,
       profileCompletedAt: new Date(),
     });
-    await updateRules(guildConfig, fakeMember('admin-1', true), 'Regeltext', 'admin-1');
+  }
 
-    expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_RULES_ACCEPTANCE');
+  it('NEEDS_FACHRICHTUNG, wenn Profil und Standort da sind, aber noch keine Fachrichtung gewaehlt wurde', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    await getOrCreateGuildConfig(guildId);
+    const discordId = `discord-${randomUUID()}`;
+    await prepareUntilLocation(guildId, discordId);
+
+    expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_FACHRICHTUNG');
   });
 
-  it('NEEDS_ONBOARDING, wenn Profil und Regeln erledigt sind, aber das Onboarding noch offen ist', async () => {
+  it('NEEDS_CLASS, wenn die Fachrichtung gewaehlt ist, aber noch keine Klasse', async () => {
     const guildId = `guild-${randomUUID()}`;
-    const guildConfig = await getOrCreateGuildConfig(guildId);
+    await getOrCreateGuildConfig(guildId);
     const discordId = `discord-${randomUUID()}`;
-    await setVerificationStatus(guildId, discordId, 'VERIFIED');
-    const { location } = await upsertLocation({
-      code: `code-${randomUUID()}`,
-      name: 'COMCAVE Test',
-      state: 'Teststate',
-      city: 'Teststadt',
-      postalCode: '11111',
-    });
-    await updatePersonalDetails(guildId, discordId, {
-      firstName: 'Max',
-      lastName: 'Mustermann',
-      age: 25,
-      locationId: location.id,
-      profileCompletedAt: new Date(),
-    });
-    await updateRules(guildConfig, fakeMember('admin-1', true), 'Regeltext', 'admin-1');
-    await acceptCurrentRules(guildConfig, fakeMember(discordId), discordId);
+    await prepareUntilLocation(guildId, discordId);
+    await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
+
+    expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_CLASS');
+  });
+
+  it('NEEDS_ONBOARDING, wenn Fachrichtung und Klasse gewaehlt sind, aber das Onboarding noch offen ist', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    await getOrCreateGuildConfig(guildId);
+    const discordId = `discord-${randomUUID()}`;
+    await prepareUntilLocation(guildId, discordId);
+    await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
+    const klasse = await getOrCreateClass(guildId, 'A');
+    await setMemberClass(guildId, discordId, klasse.id);
 
     expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_ONBOARDING');
+  });
+
+  it('NEEDS_RULES_ACCEPTANCE, wenn Fachrichtung/Klasse/Onboarding erledigt sind, aber noch nicht den aktuellen Regeln zugestimmt wurde', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    await getOrCreateGuildConfig(guildId);
+    const discordId = `discord-${randomUUID()}`;
+    await prepareUntilLocation(guildId, discordId);
+    await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
+    const klasse = await getOrCreateClass(guildId, 'A');
+    await setMemberClass(guildId, discordId, klasse.id);
+    await submitAnswer(guildId, discordId, 'IT_EXPERIENCE', ['KEINE']);
+    await submitAnswer(guildId, discordId, 'INTERESTS', ['SONSTIGES']);
+
+    expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_RULES_ACCEPTANCE');
   });
 
   it('COMPLETE, wenn alle Schritte abgeschlossen sind', async () => {
     const guildId = `guild-${randomUUID()}`;
     const guildConfig = await getOrCreateGuildConfig(guildId);
     const discordId = `discord-${randomUUID()}`;
+    await prepareUntilLocation(guildId, discordId);
+    await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
+    const klasse = await getOrCreateClass(guildId, 'A');
+    await setMemberClass(guildId, discordId, klasse.id);
+    await submitAnswer(guildId, discordId, 'IT_EXPERIENCE', ['KEINE']);
+    await submitAnswer(guildId, discordId, 'INTERESTS', ['SONSTIGES']);
+    await updateRules(guildConfig, fakeMember('admin-1', true), 'Regeltext', 'admin-1');
+    await acceptCurrentRules(guildConfig, fakeMember(discordId), discordId);
+
+    expect(await resolveNextJourneyStep(guildId, discordId)).toBe('COMPLETE');
+  });
+});
+
+describe('grantOnboardedRoleIfComplete', () => {
+  async function prepareCompletedMember(
+    guildId: string,
+    discordId: string,
+  ): Promise<Awaited<ReturnType<typeof getOrCreateGuildConfig>>> {
+    const guildConfig = await getOrCreateGuildConfig(guildId);
     await setVerificationStatus(guildId, discordId, 'VERIFIED');
     const { location } = await upsertLocation({
       code: `code-${randomUUID()}`,
@@ -123,11 +181,62 @@ describe('resolveNextJourneyStep', () => {
       locationId: location.id,
       profileCompletedAt: new Date(),
     });
-    await updateRules(guildConfig, fakeMember('admin-1', true), 'Regeltext', 'admin-1');
-    await acceptCurrentRules(guildConfig, fakeMember(discordId), discordId);
+    await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
+    const klasse = await getOrCreateClass(guildId, 'A');
+    await setMemberClass(guildId, discordId, klasse.id);
     await submitAnswer(guildId, discordId, 'IT_EXPERIENCE', ['KEINE']);
     await submitAnswer(guildId, discordId, 'INTERESTS', ['SONSTIGES']);
+    await updateRules(guildConfig, fakeMember('admin-1', true), 'Regeltext', 'admin-1');
+    await acceptCurrentRules(guildConfig, fakeMember(discordId), discordId);
+    return getOrCreateGuildConfig(guildId);
+  }
 
-    expect(await resolveNextJourneyStep(guildId, discordId)).toBe('COMPLETE');
+  it('vergibt die Mitglied-Rolle, sobald der komplette Eintrittsflow abgeschlossen ist', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const discordId = `discord-${randomUUID()}`;
+    await updateGuildConfig(guildId, { onboardedRoleId: 'role-onboarded' });
+    const guildConfig = await prepareCompletedMember(guildId, discordId);
+    const member = fakeMemberWithRoles(discordId);
+
+    await grantOnboardedRoleIfComplete(member, guildConfig, discordId);
+
+    expect(member.roles.add).toHaveBeenCalledWith('role-onboarded', expect.any(String));
+    expect(member.roles.cache.has('role-onboarded')).toBe(true);
+  });
+
+  it('vergibt KEINE Rolle, wenn der Eintrittsflow noch nicht komplett ist', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const discordId = `discord-${randomUUID()}`;
+    const guildConfig = await updateGuildConfig(guildId, { onboardedRoleId: 'role-onboarded' });
+    await setVerificationStatus(guildId, discordId, 'VERIFIED');
+    const member = fakeMemberWithRoles(discordId);
+
+    await grantOnboardedRoleIfComplete(member, guildConfig, discordId);
+
+    expect(member.roles.add).not.toHaveBeenCalled();
+  });
+
+  it('ist idempotent: ruft roles.add() nicht erneut auf, wenn die Rolle schon vorhanden ist', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const discordId = `discord-${randomUUID()}`;
+    await updateGuildConfig(guildId, { onboardedRoleId: 'role-onboarded' });
+    const guildConfig = await prepareCompletedMember(guildId, discordId);
+    const member = fakeMemberWithRoles(discordId, ['role-onboarded']);
+
+    await grantOnboardedRoleIfComplete(member, guildConfig, discordId);
+
+    expect(member.roles.add).not.toHaveBeenCalled();
+  });
+
+  it('tut nichts, wenn noch keine onboardedRoleId konfiguriert ist (z.B. vor /setup-server)', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const discordId = `discord-${randomUUID()}`;
+    const guildConfig = await prepareCompletedMember(guildId, discordId);
+    const member = fakeMemberWithRoles(discordId);
+
+    await expect(
+      grantOnboardedRoleIfComplete(member, guildConfig, discordId),
+    ).resolves.toBeUndefined();
+    expect(member.roles.add).not.toHaveBeenCalled();
   });
 });

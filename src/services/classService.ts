@@ -6,8 +6,8 @@ import { logAuditEvent } from '../repositories/auditLogRepository.js';
 import { addRoleOrThrow, removeRoleOrThrow } from './discordRoleSync.js';
 import { assertMemberVerified } from './verificationService.js';
 import { assertProfileComplete } from './memberProfileService.js';
-import { assertRulesAccepted } from './ruleService.js';
-import { ValidationError } from '../utils/errors.js';
+import { assertFachrichtungChosen } from './fachrichtungService.js';
+import { PermissionError, ValidationError } from '../utils/errors.js';
 import type { ClassName } from '../types/domain.js';
 import { createChildLogger } from '../utils/logger.js';
 
@@ -28,20 +28,30 @@ export interface ClassAssignmentResult {
  * zuerst die alte Klassenrolle entfernt, dann die neue vergeben, dann die DB
  * aktualisiert und zuletzt ein Audit-Log-Eintrag geschrieben.
  *
- * Wirft PermissionError, wenn das Mitglied nicht verifiziert ist, und
- * ValidationError, wenn die Zielklasse nicht existiert oder noch keine Rolle
- * konfiguriert ist (siehe /setup-klassen) bzw. wenn dem Bot die Berechtigung
- * zur Rollenvergabe fehlt.
+ * Selbstbedienung ist bewusst NUR EINMALIG moeglich (siehe
+ * PermissionError-Wurf unten): ein Mitglied, das bereits einer Klasse
+ * zugeordnet ist, kann diese nicht selbst per Klick aendern - Klassenwechsel
+ * laufen ueber die Klassenleitung/Verwaltung (`/mitglied-klasse-aendern`,
+ * ADMIN-only), die `options.allowChange: true` setzt. Ohne diese Sperre
+ * koennte ein Mitglied beliebig zwischen Klassen hin- und herspringen, was
+ * die Klassenbereiche/-mitgliederlisten inkonsistent machen wuerde.
+ *
+ * Wirft PermissionError, wenn das Mitglied nicht verifiziert ist, noch keine
+ * Fachrichtung gewaehlt hat, oder (bei Selbstbedienung) bereits einer anderen
+ * Klasse zugeordnet ist. Wirft ValidationError, wenn die Zielklasse nicht
+ * existiert oder noch keine Rolle konfiguriert ist (siehe /setup-klassen)
+ * bzw. wenn dem Bot die Berechtigung zur Rollenvergabe fehlt.
  */
 export async function assignClass(
   targetMember: GuildMember,
   guildConfig: GuildConfig,
   className: ClassName,
   actorDiscordId: string,
+  options: { allowChange?: boolean } = {},
 ): Promise<ClassAssignmentResult> {
   await assertMemberVerified(guildConfig.id, targetMember.id);
   await assertProfileComplete(guildConfig.id, targetMember.id);
-  await assertRulesAccepted(guildConfig.id, targetMember.id);
+  await assertFachrichtungChosen(guildConfig.id, targetMember.id);
 
   const targetClass = await getClassByName(guildConfig.id, className);
   if (!targetClass || !targetClass.roleId) {
@@ -69,6 +79,13 @@ export async function assignClass(
       newClassName: className,
       changed: false,
     };
+  }
+
+  if (previousClass && previousClass.id !== targetClass.id && !options.allowChange) {
+    throw new PermissionError(
+      `Deine Klasse ist bereits auf ${previousClassName} festgelegt und kann nicht selbst ` +
+        'gewechselt werden. Bitte wende dich an deine Klassenleitung oder die Verwaltung.',
+    );
   }
 
   if (previousClass && previousClass.id !== targetClass.id && previousClass.roleId) {
@@ -122,7 +139,20 @@ export async function getCurrentClassName(
 ): Promise<ClassName | null> {
   await assertMemberVerified(guildId, discordId);
   await assertProfileComplete(guildId, discordId);
-  await assertRulesAccepted(guildId, discordId);
+  await assertFachrichtungChosen(guildId, discordId);
   const memberRow = await getMemberWithClass(guildId, discordId);
   return (memberRow?.class?.name as ClassName | undefined) ?? null;
+}
+
+/**
+ * Zentraler Guard: stellt sicher, dass ein Mitglied bereits einer Klasse
+ * zugeordnet ist, bevor es am Onboarding-Fragebogen oder der
+ * Regelzustimmung teilnimmt (siehe memberJourneyService.ts - Klassenwahl
+ * kommt jetzt vor beiden Schritten).
+ */
+export async function assertClassChosen(guildId: string, discordId: string): Promise<void> {
+  const memberRow = await getMemberWithClass(guildId, discordId);
+  if (!memberRow?.classId) {
+    throw new PermissionError('Bitte waehle zuerst deine Klasse.');
+  }
 }

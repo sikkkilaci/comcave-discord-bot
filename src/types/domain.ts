@@ -96,6 +96,21 @@ export const INTEREST_LABELS: Record<Interest, string> = {
 };
 
 /**
+ * Fachrichtung der Umschulung - wird im Eintrittsflow direkt nach dem
+ * COMCAVE-Standort abgefragt (siehe fachrichtungService.ts), noch vor der
+ * Klassenwahl. Bewusst auf genau die zwei angebotenen IHK-Fachrichtungen
+ * beschraenkt (Fachinformatiker Systemintegration / Anwendungsentwicklung).
+ */
+export const FACHRICHTUNGEN = ['SYSTEMINTEGRATION', 'ANWENDUNGSENTWICKLUNG'] as const;
+export const fachrichtungSchema = z.enum(FACHRICHTUNGEN);
+export type Fachrichtung = z.infer<typeof fachrichtungSchema>;
+
+export const FACHRICHTUNG_LABELS: Record<Fachrichtung, string> = {
+  SYSTEMINTEGRATION: '💻 Fachinformatiker Systemintegration',
+  ANWENDUNGSENTWICKLUNG: '👨‍💻 Fachinformatiker Anwendungsentwicklung',
+};
+
+/**
  * Klassen der Lerngruppe. Bewusst auf genau drei feste Klassen beschraenkt
  * (siehe Anforderung "Klassenzuweisung A/B/C"); `Class.name` in der
  * Datenbank ist trotzdem ein generisches String-Feld, falls spaeter weitere

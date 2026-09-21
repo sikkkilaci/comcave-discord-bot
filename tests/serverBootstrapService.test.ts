@@ -48,6 +48,7 @@ interface FakeCreatedChannelOptions {
   type: ChannelType;
   parent?: string;
   permissionOverwrites?: Array<{ id: string; allow?: bigint[]; deny?: bigint[] }>;
+  position?: number;
 }
 
 function makeMissingPermissionsError(): DiscordAPIError {
@@ -247,6 +248,7 @@ describe('serverBootstrapService', () => {
       const result = await bootstrapServer(guild, 'actor-1');
 
       expect(result.verifiedRole.created).toBe(true);
+      expect(result.onboardedRole.created).toBe(true);
       expect(result.adminRole.created).toBe(true);
       expect(result.moderatorRole.created).toBe(true);
       for (const name of CLASS_NAMES) {
@@ -258,24 +260,26 @@ describe('serverBootstrapService', () => {
       expect(result.verificationChannel.created).toBe(true);
       expect(result.whereAmIChannel.created).toBe(true);
       expect(result.logChannel.created).toBe(true);
+      expect(result.schulhofChannel.created).toBe(true);
       expect(result.verificationMessagePosted).toBe(true);
       expect(result.whereAmIMessagePosted).toBe(true);
       expect(result.warnings).toEqual([]);
 
-      // 6 Rollen (Verifiziert/Admin/Moderator/Klasse A/B/C), alle ohne Basis-Berechtigung.
-      expect(roleCreateCalls).toHaveLength(6);
+      // 7 Rollen (Verifiziert/Mitglied/Admin/Moderator/Klasse A/B/C), alle ohne Basis-Berechtigung.
+      expect(roleCreateCalls).toHaveLength(7);
       for (const call of roleCreateCalls) {
         expect(call.permissions).toEqual([]);
       }
 
-      // 3 globale Kanaele + 3 x (1 Kategorie + 7 Kanaele) = 27, plus die globale
-      // COMCAVE-Plattformstruktur (ensureGlobalServerStructure): 8 Kategorien + 28 neue
-      // Kanaele (31 Kanaele in der Struktur, davon 3 - Verifizierung/wo-bin-ich/Log -
-      // wiederverwendet statt neu angelegt) = 36. Gesamt 27 + 36 = 63.
-      expect(channelCreateCalls).toHaveLength(63);
+      // 4 globale Kanaele (Verifizierung/wo-bin-ich/Log/Schulhof) + 3 x (1 Kategorie + 7 Kanaele)
+      // = 28, plus die globale COMCAVE-Plattformstruktur (ensureGlobalServerStructure): 8
+      // Kategorien + 28 neue Kanaele (31 Kanaele in der Struktur, davon 3 - Verifizierung/
+      // wo-bin-ich/Log - wiederverwendet statt neu angelegt) = 36. Gesamt 28 + 36 = 64.
+      expect(channelCreateCalls).toHaveLength(64);
 
       const guildConfig = await getOrCreateGuildConfig(guild.id);
       expect(guildConfig.verifiedRoleId).toBe(result.verifiedRole.id);
+      expect(guildConfig.onboardedRoleId).toBe(result.onboardedRole.id);
       expect(guildConfig.adminRoleId).toBe(result.adminRole.id);
       expect(guildConfig.moderatorRoleId).toBe(result.moderatorRole.id);
       expect(guildConfig.whereAmIChannelId).toBe(result.whereAmIChannel.id);
@@ -543,6 +547,32 @@ describe('serverBootstrapService', () => {
       );
       expect(adminOverwrite).toBeDefined();
     });
+
+    it(
+      'legt den Schulhof-Kanal ganz oben (position 0) ausserhalb jeder Kategorie an, sichtbar ' +
+        'fuer die Mitglied-Rolle (nicht @everyone) - klassenuebergreifender Talk fuer ALLE ' +
+        'vollstaendig onboardeten Mitglieder',
+      async () => {
+        const { guild, channelCreateCalls } = fakeGuild({});
+
+        const result = await bootstrapServer(guild, 'actor-1');
+
+        const schulhofCreateCall = channelCreateCalls.find((c) => c.name === '🏫-schulhof');
+        expect(schulhofCreateCall).toBeDefined();
+        expect(schulhofCreateCall?.parent).toBeUndefined();
+        expect(schulhofCreateCall?.position).toBe(0);
+
+        const everyoneOverwrite = schulhofCreateCall?.permissionOverwrites?.find(
+          (o) => o.id === 'role-everyone',
+        );
+        expect(everyoneOverwrite?.deny).toContain(BigInt(1) << BigInt(10));
+
+        const onboardedOverwrite = schulhofCreateCall?.permissionOverwrites?.find(
+          (o) => o.id === result.onboardedRole.id,
+        );
+        expect(onboardedOverwrite?.allow).toContain(BigInt(1) << BigInt(11)); // SendMessages
+      },
+    );
 
     it('warnt, wenn die Bot-Rolle nicht ueber den verwalteten Rollen steht', async () => {
       const { guild } = fakeGuild({ botTopRolePosition: 0 });

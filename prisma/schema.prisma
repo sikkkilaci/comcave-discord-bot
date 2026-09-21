@@ -28,6 +28,14 @@ model GuildConfig {
   adminRoleId     String?
   moderatorRoleId String?
   verifiedRoleId  String?
+  // Vergeben erst, wenn das GESAMTE Eintritts-Gate (Verifizierung -> Profil ->
+  // Standort -> Fachrichtung -> Klasse -> Onboarding -> Regelwerk, siehe
+  // memberJourneyService.ts) abgeschlossen ist. Erst diese Rolle - NICHT
+  // verifiedRoleId - schaltet in globalServerStructureService.ts die
+  // eigentlichen Server-Kanaele frei, damit ein neues Mitglied bis zum
+  // vollstaendigen Abschluss ausschliesslich den oeffentlichen
+  // Verifizierungskanal sieht.
+  onboardedRoleId String?
 
   // Kanal-IDs fuer wiederkehrende Bot-Ausgaben.
   logChannelId      String?
@@ -89,6 +97,11 @@ model Member {
   locationId         String?
   location           ComcaveLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
   profileCompletedAt DateTime?
+
+  // Fachrichtung (siehe fachrichtungService.ts): "SYSTEMINTEGRATION" |
+  // "ANWENDUNGSENTWICKLUNG" (src/types/domain.ts). Schritt im Eintrittsflow
+  // nach dem Standort, vor der Klassenwahl.
+  fachrichtung String?
 
   @@unique([guildId, discordId])
   @@index([classId])

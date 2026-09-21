@@ -1,6 +1,6 @@
 import type { Class, ComcaveLocation, Member } from '@prisma/client';
 import { prisma } from '../db/client.js';
-import type { ItExperienceLevel, VerificationStatus } from '../types/domain.js';
+import type { Fachrichtung, ItExperienceLevel, VerificationStatus } from '../types/domain.js';
 
 /**
  * Liefert den Member-Datensatz eines Discord-Nutzers auf einem Server und
@@ -58,6 +58,23 @@ export async function setMemberClass(
   return prisma.member.update({
     where: { guildId_discordId: { guildId, discordId } },
     data: { classId },
+  });
+}
+
+/**
+ * Setzt die Fachrichtung eines Mitglieds (siehe fachrichtungService.ts). Wird
+ * nur einmal aufgerufen, solange noch keine gesetzt ist - die Sperre gegen
+ * ein spaeteres Selbst-Aendern liegt im Service, nicht hier.
+ */
+export async function setMemberFachrichtung(
+  guildId: string,
+  discordId: string,
+  fachrichtung: Fachrichtung,
+): Promise<Member> {
+  await getOrCreateMember(guildId, discordId);
+  return prisma.member.update({
+    where: { guildId_discordId: { guildId, discordId } },
+    data: { fachrichtung },
   });
 }
 

@@ -13,7 +13,14 @@ import {
   showRulesToMember,
   updateRules,
 } from '../src/services/ruleService.js';
-import { setVerificationStatus } from '../src/repositories/memberRepository.js';
+import { submitAnswer } from '../src/services/onboardingService.js';
+import { getOrCreateClass } from '../src/repositories/classRepository.js';
+import {
+  setMemberClass,
+  setMemberFachrichtung,
+  setVerificationStatus,
+  updatePersonalDetails,
+} from '../src/repositories/memberRepository.js';
 import { PermissionError, ValidationError } from '../src/utils/errors.js';
 
 function fakeMember(options: { id: string; isAdministrator?: boolean }): GuildMember {
@@ -23,6 +30,21 @@ function fakeMember(options: { id: string; isAdministrator?: boolean }): GuildMe
     permissions: { has: () => options.isAdministrator ?? false },
     roles: { cache: { has: () => false } },
   } as unknown as GuildMember;
+}
+
+/**
+ * Bereitet ein Mitglied bis unmittelbar vor dem Regelwerk-Schritt vor
+ * (Verifizierung, Profil, Fachrichtung, Klasse, Onboarding-Fragebogen -
+ * Regelzustimmung ist jetzt der LETZTE Schritt, siehe memberJourneyService.ts).
+ */
+async function prepareMemberReadyForRules(guildId: string, discordId: string): Promise<void> {
+  await setVerificationStatus(guildId, discordId, 'VERIFIED');
+  await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
+  await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
+  const klasse = await getOrCreateClass(guildId, 'A');
+  await setMemberClass(guildId, discordId, klasse.id);
+  await submitAnswer(guildId, discordId, 'IT_EXPERIENCE', ['KEINE']);
+  await submitAnswer(guildId, discordId, 'INTERESTS', ['SONSTIGES']);
 }
 
 describe('ruleService', () => {
@@ -122,6 +144,7 @@ describe('ruleService', () => {
       const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
       await updateRules(guildConfig, admin, 'Regeltext', admin.id);
       const member = fakeMember({ id: 'member-1' });
+      await prepareMemberReadyForRules(guildId, member.id);
       await acceptCurrentRules(guildConfig, member, member.id);
 
       await expect(assertRulesAccepted(guildId, 'member-1')).resolves.toBeUndefined();
@@ -130,9 +153,17 @@ describe('ruleService', () => {
   });
 
   describe('showRulesToMember', () => {
-    it('wirft ValidationError, wenn noch kein Regelwerk konfiguriert ist', async () => {
+    it('wirft PermissionError, wenn das Mitglied die vorherigen Schritte noch nicht abgeschlossen hat', async () => {
       const guildId = `guild-${randomUUID()}`;
       await getOrCreateGuildConfig(guildId);
+
+      await expect(showRulesToMember(guildId, 'member-1')).rejects.toBeInstanceOf(PermissionError);
+    });
+
+    it('wirft ValidationError, wenn noch kein Regelwerk konfiguriert ist (aber alle vorherigen Schritte durch sind)', async () => {
+      const guildId = `guild-${randomUUID()}`;
+      await getOrCreateGuildConfig(guildId);
+      await prepareMemberReadyForRules(guildId, 'member-1');
 
       await expect(showRulesToMember(guildId, 'member-1')).rejects.toBeInstanceOf(ValidationError);
     });
@@ -142,6 +173,7 @@ describe('ruleService', () => {
       const guildConfig = await getOrCreateGuildConfig(guildId);
       const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
       await updateRules(guildConfig, admin, 'Regeltext', admin.id);
+      await prepareMemberReadyForRules(guildId, 'member-1');
 
       const ruleSet = await showRulesToMember(guildId, 'member-1');
 
@@ -156,6 +188,7 @@ describe('ruleService', () => {
       const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
       await updateRules(guildConfig, admin, 'Regeltext', admin.id);
       const member = fakeMember({ id: 'member-1' });
+      await prepareMemberReadyForRules(guildId, member.id);
 
       await acceptCurrentRules(guildConfig, member, member.id);
 
@@ -169,6 +202,7 @@ describe('ruleService', () => {
       const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
       await updateRules(guildConfig, admin, 'Regeltext', admin.id);
       const member = fakeMember({ id: 'member-1' });
+      await prepareMemberReadyForRules(guildId, member.id);
 
       await acceptCurrentRules(guildConfig, member, member.id);
       await acceptCurrentRules(guildConfig, member, member.id);
@@ -183,6 +217,7 @@ describe('ruleService', () => {
       const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
       await updateRules(guildConfig, admin, 'Version 1', admin.id);
       const member = fakeMember({ id: 'member-1' });
+      await prepareMemberReadyForRules(guildId, member.id);
       await acceptCurrentRules(guildConfig, member, member.id);
       expect(await hasAcceptedCurrentRules(guildId, member.id)).toBe(true);
 
@@ -210,7 +245,7 @@ describe('ruleService', () => {
       const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
       await updateRules(guildConfig, admin, 'Regeltext', admin.id);
 
-      await setVerificationStatus(guildId, 'member-1', 'VERIFIED');
+      await prepareMemberReadyForRules(guildId, 'member-1');
       await setVerificationStatus(guildId, 'member-2', 'VERIFIED');
       await acceptCurrentRules(guildConfig, fakeMember({ id: 'member-1' }), 'member-1');
 

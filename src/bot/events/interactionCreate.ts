@@ -13,14 +13,22 @@ import type { BotEvent } from '../../types/event.js';
 import type { BotClient } from '../../types/client.js';
 import { getOrCreateGuildConfig } from '../../repositories/guildConfigRepository.js';
 import { hasPermissionLevel } from '../../permissions/checkPermission.js';
-import { setMemberVerification } from '../../services/verificationService.js';
-import { assertMemberVerified, submitAnswer } from '../../services/onboardingService.js';
-import { assignClass } from '../../services/classService.js';
+import { assertMemberVerified, setMemberVerification } from '../../services/verificationService.js';
+import { submitAnswer } from '../../services/onboardingService.js';
+import { assignClass, assertClassChosen } from '../../services/classService.js';
+import {
+  assertFachrichtungChosen,
+  chooseFachrichtung,
+} from '../../services/fachrichtungService.js';
 import {
   assertProfileComplete,
+  completeProfileAndSetNickname,
+  selectLocation,
   submitPersonalDetails,
 } from '../../services/memberProfileService.js';
-import { assertRulesAccepted, acceptCurrentRules } from '../../services/ruleService.js';
+import { acceptCurrentRules } from '../../services/ruleService.js';
+import { grantOnboardedRoleIfComplete } from '../../services/memberJourneyService.js';
+import { searchActiveLocations } from '../../repositories/locationRepository.js';
 import { buildSafeNextStepReplyPart } from '../journeyFlow.js';
 import { VERIFY_BUTTON_CUSTOM_ID } from '../ui/verificationMessage.js';
 import {
@@ -36,6 +44,18 @@ import {
   buildProfileDetailsModal,
   buildProfileDetailsSavedMessage,
 } from '../ui/profileMessage.js';
+import {
+  LOCATION_SEARCH_BUTTON_CUSTOM_ID,
+  LOCATION_SEARCH_INPUT_ID,
+  LOCATION_SEARCH_MODAL_CUSTOM_ID,
+  LOCATION_SELECT_CUSTOM_ID,
+  MAX_LOCATION_CHOICES,
+  buildLocationChoicesMessage,
+  buildLocationSearchModal,
+  buildNoLocationMatchesMessage,
+  buildTooManyLocationMatchesMessage,
+} from '../ui/locationMessage.js';
+import { parseFachrichtungCustomId } from '../ui/fachrichtungMessage.js';
 import { RULES_ACCEPT_BUTTON_CUSTOM_ID } from '../ui/rulesMessage.js';
 import { buildClassSelectionMessage, parseClassCustomId } from '../ui/classMessage.js';
 import {
@@ -47,7 +67,7 @@ import {
   getCoursePlanOverviewForClass,
 } from '../../services/coursePlanService.js';
 import { findGuildMemberAcrossGuilds } from '../discordHelpers.js';
-import { CLASS_NAME_LABELS, type ClassName } from '../../types/domain.js';
+import { CLASS_NAME_LABELS, type ClassName, type Fachrichtung } from '../../types/domain.js';
 import { AppError, ValidationError } from '../../utils/errors.js';
 import { createChildLogger } from '../../utils/logger.js';
 
@@ -162,6 +182,17 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
+  if (interaction.customId === LOCATION_SEARCH_BUTTON_CUSTOM_ID) {
+    await handleLocationSearchButton(interaction);
+    return;
+  }
+
+  const fachrichtung = parseFachrichtungCustomId(interaction.customId);
+  if (fachrichtung) {
+    await handleFachrichtungSelect(interaction, fachrichtung);
+    return;
+  }
+
   if (interaction.customId === RULES_ACCEPT_BUTTON_CUSTOM_ID) {
     await handleRulesAcceptButton(interaction);
     return;
@@ -212,7 +243,8 @@ async function handleOnboardingRestart(interaction: ButtonInteraction): Promise<
 
     await assertMemberVerified(member.guild.id, member.id);
     await assertProfileComplete(member.guild.id, member.id);
-    await assertRulesAccepted(member.guild.id, member.id);
+    await assertFachrichtungChosen(member.guild.id, member.id);
+    await assertClassChosen(member.guild.id, member.id);
     const { embeds, components } = buildOnboardingStepMessage('IT_EXPERIENCE');
     await interaction.update({ embeds, components });
   } catch (error) {
@@ -229,10 +261,121 @@ async function handleProfileDetailsButton(interaction: ButtonInteraction): Promi
   }
 }
 
+/** Oeffnet das Standort-Suchmodal (siehe locationMessage.ts). */
+async function handleLocationSearchButton(interaction: ButtonInteraction): Promise<void> {
+  try {
+    await interaction.showModal(buildLocationSearchModal());
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/**
+ * Verarbeitet den Klick auf einen Fachrichtungs-Button. Fachrichtung ist
+ * (anders als die Klasse) ein reiner Eintrittsflow-Schritt ohne Discord-
+ * Rolle - nach erfolgreicher Wahl wird direkt der naechste Schritt
+ * (Klassenwahl) angehaengt, damit der Flow ohne weiteren Klick auf eine
+ * andere Nachricht weiterlaeuft.
+ */
+async function handleFachrichtungSelect(
+  interaction: ButtonInteraction,
+  fachrichtung: Fachrichtung,
+): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await chooseFachrichtung(member.guild.id, member.id, fachrichtung, member.id);
+
+    const nextPart = await buildSafeNextStepReplyPart(member.guild.id, member.id);
+    await interaction.reply({
+      ...(nextPart.content ? { content: nextPart.content } : {}),
+      embeds: nextPart.embeds ?? [],
+      components: nextPart.components ?? [],
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
 async function handleModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
   if (interaction.customId === PROFILE_DETAILS_MODAL_CUSTOM_ID) {
     await handleProfileDetailsModalSubmit(interaction);
+    return;
   }
+  if (interaction.customId === LOCATION_SEARCH_MODAL_CUSTOM_ID) {
+    await handleLocationSearchModalSubmit(interaction);
+  }
+}
+
+/**
+ * Verarbeitet den abgesendeten Standort-Suchbegriff: bei genau einem Treffer
+ * wird der Standort direkt uebernommen und das Profil abgeschlossen (wie
+ * bisher bei /standort-waehlen), bei mehreren Treffern eine Auswahlliste
+ * gezeigt (siehe handleLocationSelect()), bei keinem/zu vielen Treffern ein
+ * Hinweis, den Suchbegriff anzupassen.
+ */
+async function handleLocationSearchModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const query = interaction.fields.getTextInputValue(LOCATION_SEARCH_INPUT_ID);
+    const matches = await searchActiveLocations(query, MAX_LOCATION_CHOICES + 1);
+
+    if (matches.length === 0) {
+      const { embeds, components } = buildNoLocationMatchesMessage(query);
+      await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    if (matches.length > MAX_LOCATION_CHOICES) {
+      const { embeds, components } = buildTooManyLocationMatchesMessage(query, matches.length);
+      await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    if (matches.length > 1) {
+      const { embeds, components } = buildLocationChoicesMessage(matches);
+      await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await applyLocationAndReply(interaction, member, matches[0]!.id);
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/** Gemeinsame Uebernahme-Logik fuer den Standort - bei genau einem Treffer und beim Klick aus der Auswahlliste. */
+async function applyLocationAndReply(
+  interaction: ModalSubmitInteraction | StringSelectMenuInteraction,
+  member: GuildMember,
+  locationId: string,
+): Promise<void> {
+  const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+  await selectLocation(guildConfig, member, locationId, member.id);
+  const completion = await completeProfileAndSetNickname(guildConfig, member, member.id);
+
+  const prefix = completion.nicknameSkipped
+    ? '✅ Standort gespeichert. Dein Server-Nickname konnte nicht automatisch gesetzt werden ' +
+      '(fehlende Berechtigung) - bitte wende dich an einen Admin.'
+    : `✅ Standort gespeichert. Dein Server-Nickname wurde auf "${completion.nickname}" gesetzt.`;
+
+  const nextPart = await buildSafeNextStepReplyPart(member.guild.id, member.id);
+  await interaction.reply({
+    content: [prefix, nextPart.content].filter(Boolean).join('\n\n'),
+    embeds: nextPart.embeds ?? [],
+    components: nextPart.components ?? [],
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 async function handleProfileDetailsModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
@@ -278,6 +421,10 @@ async function handleRulesAcceptButton(interaction: ButtonInteraction): Promise<
 
     const guildConfig = await getOrCreateGuildConfig(member.guild.id);
     await acceptCurrentRules(guildConfig, member, member.id);
+    // Regelzustimmung ist der letzte Schritt des Eintrittsflows (siehe
+    // memberJourneyService.ts) - hier und nur hier wird geprueft, ob damit der
+    // gesamte Flow abgeschlossen ist und die Mitglied-Rolle vergeben werden kann.
+    await grantOnboardedRoleIfComplete(member, guildConfig, member.id);
 
     const nextPart = await buildSafeNextStepReplyPart(member.guild.id, member.id);
     await interaction.update({
@@ -334,12 +481,32 @@ async function handleClassSelect(
         : `Du bist jetzt in ${CLASS_NAME_LABELS[result.newClassName]}! 🎉`
       : `Du bist bereits in ${CLASS_NAME_LABELS[result.newClassName]}.`;
 
+    // Nur beim allerersten (mandatorischen) Setzen der Klasse direkt mit dem naechsten
+    // Eintrittsflow-Schritt verketten - ein Wechsel durch die Verwaltung (kommt hier
+    // nie vor, siehe assignClass()-Sperre) oder ein erneuter Klick auf die bereits
+    // zugewiesene Klasse soll den Flow nicht nochmal anstossen.
+    const nextPart =
+      result.changed && !result.previousClassName
+        ? await buildSafeNextStepReplyPart(member.guild.id, member.id)
+        : null;
+    const fullContent = [content, nextPart?.content].filter(Boolean).join('\n\n');
+
     if (interaction.message.flags.has(MessageFlags.Ephemeral)) {
       const { embeds, components } = buildClassSelectionMessage(result.newClassName);
       await interaction.update({ embeds, components });
-      await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+      await interaction.followUp({
+        content: fullContent,
+        embeds: nextPart?.embeds ?? [],
+        components: nextPart?.components ?? [],
+        flags: MessageFlags.Ephemeral,
+      });
     } else {
-      await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+      await interaction.reply({
+        content: fullContent,
+        embeds: nextPart?.embeds ?? [],
+        components: nextPart?.components ?? [],
+        flags: MessageFlags.Ephemeral,
+      });
     }
   } catch (error) {
     await handleInteractionError(interaction, error);
@@ -378,6 +545,11 @@ async function handleCoursePlanAck(
 }
 
 async function handleSelectMenu(interaction: StringSelectMenuInteraction): Promise<void> {
+  if (interaction.customId === LOCATION_SELECT_CUSTOM_ID) {
+    await handleLocationSelect(interaction);
+    return;
+  }
+
   const question = parseAnswerCustomId(interaction.customId);
   if (!question) return;
 
@@ -391,6 +563,21 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction): Promi
     const state = await submitAnswer(member.guild.id, member.id, question, interaction.values);
     const { embeds, components } = buildOnboardingMessageForState(state);
     await interaction.update({ embeds, components });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+/** Klick auf einen Standort aus der Auswahlliste (siehe handleLocationSearchModalSubmit()). */
+async function handleLocationSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await applyLocationAndReply(interaction, member, interaction.values[0]!);
   } catch (error) {
     await handleInteractionError(interaction, error);
   }

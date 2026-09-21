@@ -3,11 +3,13 @@ import { DiscordAPIError, type GuildMember } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
 import { updateClassRole } from '../src/repositories/classRepository.js';
-import { getMemberWithClass, updatePersonalDetails } from '../src/repositories/memberRepository.js';
+import {
+  getMemberWithClass,
+  setMemberFachrichtung,
+  updatePersonalDetails,
+} from '../src/repositories/memberRepository.js';
 import { setVerificationStatus } from '../src/repositories/memberRepository.js';
 import { listAuditEvents } from '../src/repositories/auditLogRepository.js';
-import { createNewActiveRuleSet } from '../src/repositories/ruleSetRepository.js';
-import { acceptRules } from '../src/repositories/ruleAcceptanceRepository.js';
 import { assignClass, getCurrentClassName } from '../src/services/classService.js';
 import { PermissionError, ValidationError } from '../src/utils/errors.js';
 
@@ -51,18 +53,20 @@ async function setupGuildWithClasses(): Promise<{
   return { guildId, guildConfig, roleA, roleB };
 }
 
-/** Markiert das Teilnehmerprofil als vollstaendig und stimmt einer frisch angelegten Regelversion zu. */
-async function completeProfileAndAcceptRules(guildId: string, discordId: string): Promise<void> {
+/** Markiert das Teilnehmerprofil als vollstaendig und legt eine Fachrichtung fest. */
+async function completeProfileAndChooseFachrichtung(
+  guildId: string,
+  discordId: string,
+): Promise<void> {
   await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
-  const ruleSet = await createNewActiveRuleSet(guildId, 'Testregeln', 'admin-test');
-  await acceptRules(guildId, discordId, ruleSet.id);
+  await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
 }
 
-/** Verifiziert + Profil vollstaendig + Regeln akzeptiert - der "startklar fuer Onboarding/Klassenwahl"-Zustand. */
+/** Verifiziert + Profil vollstaendig + Fachrichtung gewaehlt - der "startklar fuer Klassenwahl"-Zustand. */
 async function createVerifiedDiscordId(guildId: string): Promise<string> {
   const discordId = `discord-${randomUUID()}`;
   await setVerificationStatus(guildId, discordId, 'VERIFIED');
-  await completeProfileAndAcceptRules(guildId, discordId);
+  await completeProfileAndChooseFachrichtung(guildId, discordId);
   return discordId;
 }
 
@@ -132,14 +136,14 @@ describe('classService', () => {
     });
   });
 
-  describe('assignClass - Klassenwechsel', () => {
+  describe('assignClass - Klassenwechsel (nur per Admin-Override, siehe Einmal-Sperre unten)', () => {
     it('entfernt die alte Rolle, vergibt die neue, aktualisiert die DB und schreibt "class.change"', async () => {
       const { guildId, guildConfig, roleA, roleB } = await setupGuildWithClasses();
       const discordId = await createVerifiedDiscordId(guildId);
       const member = fakeGuildMember(discordId);
       await assignClass(member, guildConfig, 'A', discordId);
 
-      const result = await assignClass(member, guildConfig, 'B', discordId);
+      const result = await assignClass(member, guildConfig, 'B', discordId, { allowChange: true });
 
       expect(result.changed).toBe(true);
       expect(result.previousClassName).toBe('A');
@@ -162,7 +166,7 @@ describe('classService', () => {
       const member = fakeGuildMember(discordId);
       await assignClass(member, guildConfig, 'A', discordId);
 
-      await assignClass(member, guildConfig, 'B', discordId);
+      await assignClass(member, guildConfig, 'B', discordId, { allowChange: true });
 
       expect(member.roles.cache.has(roleA)).toBe(false);
       expect(member.roles.cache.has(roleB)).toBe(true);
@@ -186,6 +190,48 @@ describe('classService', () => {
 
       const auditEntries = await listAuditEvents(guildId, { targetDiscordId: discordId });
       expect(auditEntries.every((entry) => entry.action === 'class.assign')).toBe(true);
+    });
+  });
+
+  describe('assignClass - Einmal-Sperre (Selbstbedienung)', () => {
+    it('wirft PermissionError, wenn ein Mitglied seine bereits zugewiesene Klasse selbst wechseln will', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = await createVerifiedDiscordId(guildId);
+      const member = fakeGuildMember(discordId);
+      await assignClass(member, guildConfig, 'A', discordId);
+
+      await expect(assignClass(member, guildConfig, 'B', discordId)).rejects.toBeInstanceOf(
+        PermissionError,
+      );
+
+      // Sperre darf die Rolle/DB nicht veraendert haben.
+      const stored = await getMemberWithClass(guildId, discordId);
+      expect(stored?.class?.name).toBe('A');
+    });
+
+    it('erlaubt weiterhin einen erneuten Klick auf die BEREITS zugewiesene Klasse (kein Wechsel)', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = await createVerifiedDiscordId(guildId);
+      const member = fakeGuildMember(discordId);
+      await assignClass(member, guildConfig, 'A', discordId);
+
+      const result = await assignClass(member, guildConfig, 'A', discordId);
+
+      expect(result.changed).toBe(false);
+    });
+
+    it('Admin-Override (allowChange: true) darf die Sperre umgehen', async () => {
+      const { guildId, guildConfig } = await setupGuildWithClasses();
+      const discordId = await createVerifiedDiscordId(guildId);
+      const member = fakeGuildMember(discordId);
+      await assignClass(member, guildConfig, 'A', discordId);
+
+      const result = await assignClass(member, guildConfig, 'B', discordId, {
+        allowChange: true,
+      });
+
+      expect(result.changed).toBe(true);
+      expect(result.newClassName).toBe('B');
     });
   });
 
@@ -259,7 +305,7 @@ describe('classService', () => {
     });
   });
 
-  describe('Profil-/Regel-Guard (Umgehungsschutz)', () => {
+  describe('Profil-/Fachrichtung-Guard (Umgehungsschutz)', () => {
     it('assignClass wirft PermissionError, wenn das Profil trotz Verifizierung nicht vollstaendig ist', async () => {
       const { guildId, guildConfig } = await setupGuildWithClasses();
       const discordId = `discord-${randomUUID()}`;
@@ -280,12 +326,11 @@ describe('classService', () => {
       await expect(getCurrentClassName(guildId, discordId)).rejects.toBeInstanceOf(PermissionError);
     });
 
-    it('assignClass wirft PermissionError, wenn das Profil vollstaendig ist, aber die aktuellen Regeln noch nicht akzeptiert wurden', async () => {
+    it('assignClass wirft PermissionError, wenn das Profil vollstaendig ist, aber noch keine Fachrichtung gewaehlt wurde', async () => {
       const { guildId, guildConfig } = await setupGuildWithClasses();
       const discordId = `discord-${randomUUID()}`;
       await setVerificationStatus(guildId, discordId, 'VERIFIED');
       await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
-      await createNewActiveRuleSet(guildId, 'Testregeln', 'admin-test');
       const member = fakeGuildMember(discordId);
 
       await expect(assignClass(member, guildConfig, 'A', discordId)).rejects.toBeInstanceOf(
@@ -293,18 +338,13 @@ describe('classService', () => {
       );
     });
 
-    it('assignClass wirft erneut PermissionError, wenn nach einem Regelwerk-Update noch nicht der neuen Version zugestimmt wurde', async () => {
-      const { guildId, guildConfig } = await setupGuildWithClasses();
-      const discordId = await createVerifiedDiscordId(guildId);
-      const member = fakeGuildMember(discordId);
-      await assignClass(member, guildConfig, 'A', discordId);
+    it('getCurrentClassName wirft PermissionError, wenn noch keine Fachrichtung gewaehlt wurde', async () => {
+      const { guildId } = await setupGuildWithClasses();
+      const discordId = `discord-${randomUUID()}`;
+      await setVerificationStatus(guildId, discordId, 'VERIFIED');
+      await updatePersonalDetails(guildId, discordId, { profileCompletedAt: new Date() });
 
-      // Neue Regelversion - die bisherige Zustimmung bezieht sich nur auf die alte Version.
-      await createNewActiveRuleSet(guildId, 'Aktualisierte Testregeln', 'admin-test');
-
-      await expect(assignClass(member, guildConfig, 'B', discordId)).rejects.toBeInstanceOf(
-        PermissionError,
-      );
+      await expect(getCurrentClassName(guildId, discordId)).rejects.toBeInstanceOf(PermissionError);
     });
   });
 });

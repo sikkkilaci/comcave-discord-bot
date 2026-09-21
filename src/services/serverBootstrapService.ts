@@ -52,17 +52,28 @@ const DISCORD_MISSING_PERMISSIONS = 50013;
  * getrennten Discord-Namensraeumen, daher keine Kollision).
  */
 const VERIFIED_ROLE_NAME = 'Verifiziert';
+// Vergeben erst nach dem GESAMTEN Eintrittsflow (siehe memberJourneyService.ts) - schaltet
+// die eigentliche Server-Sichtbarkeit frei (globalServerStructureService.ts), waehrend
+// VERIFIED_ROLE_NAME nur den allerersten Schritt (Identitaet bestaetigt) abbildet.
+const ONBOARDED_ROLE_NAME = 'Mitglied';
 const ADMIN_ROLE_NAME = 'Admin';
 const MODERATOR_ROLE_NAME = 'Moderator';
 const VERIFICATION_CHANNEL_NAME = '🔐-verifizierung';
 const WHERE_AM_I_CHANNEL_NAME = '🧭-wo-bin-ich';
 const LOG_CHANNEL_NAME = '📋-bot-log';
+// Klassenuebergreifender, unmoderierter Talk-Kanal fuer ALLE vollstaendig onboardeten
+// Mitglieder (bewusst kein Klassen-/Themenfilter) - ganz oben in der Kanalliste (position 0,
+// ausserhalb jeder Kategorie), damit die Gruppe trotz Klasseneinteilung nicht in Silos
+// zerfaellt (siehe Nutzeranforderung "Schulhof").
+const SCHULHOF_CHANNEL_NAME = '🏫-schulhof';
 
 const VERIFICATION_CHANNEL_TOPIC =
   'Verifiziere dich hier, um vollen Zugriff auf den Server zu erhalten.';
 const WHERE_AM_I_CHANNEL_TOPIC =
   'Wähle deine Klasse (A/B/C), um Zugriff auf deinen Klassenbereich zu erhalten.';
 const LOG_CHANNEL_TOPIC = 'Reserviert für Bot-Ausgaben (aktuell ohne Schreiblogik).';
+const SCHULHOF_CHANNEL_TOPIC =
+  'Offener Talk fuer ALLE Mitglieder, klassenuebergreifend - keine festen Regeln.';
 
 function classRoleName(name: ClassName): string {
   return `Klasse ${name}`;
@@ -81,11 +92,13 @@ export interface BootstrapClassSummary {
 
 export interface BootstrapResult {
   verifiedRole: BootstrapObjectSummary;
+  onboardedRole: BootstrapObjectSummary;
   adminRole: BootstrapObjectSummary;
   moderatorRole: BootstrapObjectSummary;
   verificationChannel: BootstrapObjectSummary;
   whereAmIChannel: BootstrapObjectSummary;
   logChannel: BootstrapObjectSummary;
+  schulhofChannel: BootstrapObjectSummary;
   globalStructure: GlobalServerStructureResult;
   classes: Record<ClassName, BootstrapClassSummary>;
   verificationMessagePosted: boolean;
@@ -147,6 +160,11 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     guildConfig.verifiedRoleId,
     VERIFIED_ROLE_NAME,
   );
+  const onboardedRole = await ensureManagedRole(
+    guild,
+    guildConfig.onboardedRoleId,
+    ONBOARDED_ROLE_NAME,
+  );
   const adminRole = await ensureManagedRole(guild, guildConfig.adminRoleId, ADMIN_ROLE_NAME);
   const moderatorRole = await ensureManagedRole(
     guild,
@@ -171,6 +189,7 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
   // durchgefuehrten Bootstrap hinterlaesst.
   const rolesToCheck: Array<[string, Role]> = [
     [VERIFIED_ROLE_NAME, verifiedRole.role],
+    [ONBOARDED_ROLE_NAME, onboardedRole.role],
     [ADMIN_ROLE_NAME, adminRole.role],
     [MODERATOR_ROLE_NAME, moderatorRole.role],
     ...classRoleEntries.map(([name, ensured]): [string, Role] => [
@@ -223,6 +242,14 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     buildLogChannelOverwrites(guild, adminRole.role.id, botRoleId),
     LOG_CHANNEL_TOPIC,
   );
+  const schulhofChannel = await ensureTextChannel(
+    guild,
+    null,
+    SCHULHOF_CHANNEL_NAME,
+    buildSchulhofChannelOverwrites(guild, onboardedRole.role.id, adminRole.role.id, botRoleId),
+    SCHULHOF_CHANNEL_TOPIC,
+    0,
+  );
 
   // --- 3. GuildConfig: Rollen/Kanal-IDs persistieren (bestehende Services/Repos). ---
   await configureAdminRoles(
@@ -232,6 +259,7 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
   );
   await updateGuildConfig(guild.id, {
     verifiedRoleId: verifiedRole.role.id,
+    onboardedRoleId: onboardedRole.role.id,
     welcomeChannelId: verificationChannel.channel.id,
     whereAmIChannelId: whereAmIChannel.channel.id,
     logChannelId: logChannel.channel.id,
@@ -262,11 +290,13 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
     action: 'server.bootstrap',
     metadata: {
       verifiedRoleCreated: verifiedRole.created,
+      onboardedRoleCreated: onboardedRole.created,
       adminRoleCreated: adminRole.created,
       moderatorRoleCreated: moderatorRole.created,
       verificationChannelCreated: verificationChannel.created,
       whereAmIChannelCreated: whereAmIChannel.created,
       logChannelCreated: logChannel.created,
+      schulhofChannelCreated: schulhofChannel.created,
       globalCategoriesCreated: globalStructure.categoriesCreated,
       globalChannelsCreated: globalStructure.channelsCreated,
       classRolesCreated: Object.fromEntries(
@@ -297,6 +327,7 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
 
   return {
     verifiedRole: summary(VERIFIED_ROLE_NAME, verifiedRole.role.id, verifiedRole.created),
+    onboardedRole: summary(ONBOARDED_ROLE_NAME, onboardedRole.role.id, onboardedRole.created),
     adminRole: summary(ADMIN_ROLE_NAME, adminRole.role.id, adminRole.created),
     moderatorRole: summary(MODERATOR_ROLE_NAME, moderatorRole.role.id, moderatorRole.created),
     verificationChannel: summary(
@@ -310,6 +341,11 @@ async function runBootstrap(guild: Guild, actorDiscordId: string): Promise<Boots
       whereAmIChannel.created,
     ),
     logChannel: summary(LOG_CHANNEL_NAME, logChannel.channel.id, logChannel.created),
+    schulhofChannel: summary(
+      SCHULHOF_CHANNEL_NAME,
+      schulhofChannel.channel.id,
+      schulhofChannel.created,
+    ),
     globalStructure,
     classes,
     verificationMessagePosted,
@@ -396,6 +432,7 @@ async function ensureTextChannel(
   name: string,
   overwrites?: OverwriteResolvable[],
   topic?: string,
+  position?: number,
 ): Promise<{ channel: TextChannel; created: boolean }> {
   if (storedId) {
     const existing = await fetchTextChannelSafely(guild, storedId);
@@ -410,6 +447,7 @@ async function ensureTextChannel(
     type: ChannelType.GuildText,
     ...(overwrites ? { permissionOverwrites: overwrites } : {}),
     ...(topic ? { topic } : {}),
+    ...(position !== undefined ? { position } : {}),
     reason: `COMCAVE-Server-Bootstrap: Kanal "${name}" angelegt`,
   });
   return { channel, created: true };
@@ -444,6 +482,7 @@ async function createChannelOrThrow(
     type: ChannelType.GuildText;
     permissionOverwrites?: OverwriteResolvable[];
     topic?: string;
+    position?: number;
     reason: string;
   },
 ): Promise<TextChannel> {
@@ -487,6 +526,49 @@ function buildLogChannelOverwrites(
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageChannels,
+      ],
+    });
+  }
+  return overwrites;
+}
+
+/**
+ * @everyone verliert Sichtbarkeit; die "Mitglied"-Rolle (onboardedRoleId) darf
+ * lesen UND schreiben - bewusst ohne Einschraenkung (kein readOnly), da der
+ * Schulhof laut Anforderung ein freier, unmoderierter Talk-Kanal fuer ALLE
+ * vollstaendig onboardeten Mitglieder ist, unabhaengig von ihrer Klasse.
+ */
+function buildSchulhofChannelOverwrites(
+  guild: Guild,
+  onboardedRoleId: string,
+  adminRoleId: string,
+  botRoleId: string | undefined,
+): OverwriteResolvable[] {
+  const overwrites: OverwriteResolvable[] = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    {
+      id: onboardedRoleId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.AttachFiles,
+      ],
+    },
+    {
+      id: adminRoleId,
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory],
+    },
+  ];
+  if (botRoleId) {
+    overwrites.push({
+      id: botRoleId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.SendMessages,
         PermissionFlagsBits.ManageChannels,
       ],
     });
@@ -595,6 +677,8 @@ async function checkConsistency(guildId: string): Promise<string[]> {
 
   if (!guildConfig.verifiedRoleId)
     warnings.push('Verifiziert-Rolle ist nach dem Bootstrap nicht gesetzt.');
+  if (!guildConfig.onboardedRoleId)
+    warnings.push('Mitglied-Rolle ist nach dem Bootstrap nicht gesetzt.');
   if (!guildConfig.adminRoleId) warnings.push('Admin-Rolle ist nach dem Bootstrap nicht gesetzt.');
   if (!guildConfig.whereAmIChannelId) {
     warnings.push('#wo-bin-ich-Kanal ist nach dem Bootstrap nicht gesetzt.');

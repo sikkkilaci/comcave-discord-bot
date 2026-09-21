@@ -33,7 +33,8 @@ export function buildClassSelectionMessage(
     .setTitle('Wo bin ich? 🧭')
     .setDescription(
       'Waehle deine Klasse aus, um Zugriff auf deinen Klassenbereich 🏫 zu erhalten. ' +
-        'Ein Wechsel ist jederzeit moeglich - die alte Klassenrolle wird dabei automatisch entfernt.',
+        '**Diese Wahl ist einmalig** - fuer einen Wechsel wende dich an deine Klassenleitung ' +
+        'oder die Verwaltung.',
     )
     .setColor(0x2b2d31)
     .setFooter({
