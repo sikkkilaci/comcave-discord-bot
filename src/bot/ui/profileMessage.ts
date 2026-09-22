@@ -34,8 +34,8 @@ export function buildProfileDetailsPromptMessage(): ProfileMessagePayload {
     .setTitle('📝 Teilnehmerprofil')
     .setDescription(
       'Bevor es weitergeht, brauchen wir noch ein paar Pflichtangaben von dir: Vorname, ' +
-        'Nachname, Alter und dein COMCAVE-Standort. Dein Vor- und Nachname wird anschliessend ' +
-        'als dein Server-Nickname gesetzt - dein Discord-Benutzername bleibt dabei unveraendert.',
+        'Nachname und Alter. Dein Vor- und Nachname wird anschliessend als dein Server-Nickname ' +
+        'gesetzt - dein Discord-Benutzername bleibt dabei unveraendert.',
     )
     .setColor(0x2b2d31);
 
@@ -82,17 +82,4 @@ export function buildProfileDetailsModal(): ModalBuilder {
       new ActionRowBuilder<TextInputBuilder>().addComponents(nachname),
       new ActionRowBuilder<TextInputBuilder>().addComponents(alter),
     );
-}
-
-/** Bestaetigung nach dem Modal-Submit - verweist auf den naechsten Schritt (/standort-waehlen). */
-export function buildProfileDetailsSavedMessage(): ProfileMessagePayload {
-  const embed = new EmbedBuilder()
-    .setTitle('✅ Angaben gespeichert')
-    .setDescription(
-      'Vorname, Nachname und Alter wurden gespeichert. Bitte waehle jetzt noch deinen ' +
-        'COMCAVE-Standort mit `/standort-waehlen` aus.',
-    )
-    .setColor(0x2b2d31);
-
-  return { embeds: [embed], components: [] };
 }

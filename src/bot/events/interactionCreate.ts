@@ -29,12 +29,10 @@ import {
 import {
   assertProfileComplete,
   completeProfileAndSetNickname,
-  selectLocation,
   submitPersonalDetails,
 } from '../../services/memberProfileService.js';
 import { acceptCurrentRules } from '../../services/ruleService.js';
 import { grantOnboardedRoleIfComplete } from '../../services/memberJourneyService.js';
-import { searchActiveLocations } from '../../repositories/locationRepository.js';
 import { buildSafeNextStepReplyPart } from '../journeyFlow.js';
 import { VERIFY_BUTTON_CUSTOM_ID } from '../ui/verificationMessage.js';
 import {
@@ -48,19 +46,7 @@ import {
   PROFILE_DETAILS_INPUT_IDS,
   PROFILE_DETAILS_MODAL_CUSTOM_ID,
   buildProfileDetailsModal,
-  buildProfileDetailsSavedMessage,
 } from '../ui/profileMessage.js';
-import {
-  LOCATION_SEARCH_BUTTON_CUSTOM_ID,
-  LOCATION_SEARCH_INPUT_ID,
-  LOCATION_SEARCH_MODAL_CUSTOM_ID,
-  LOCATION_SELECT_CUSTOM_ID,
-  MAX_LOCATION_CHOICES,
-  buildLocationChoicesMessage,
-  buildLocationSearchModal,
-  buildNoLocationMatchesMessage,
-  buildTooManyLocationMatchesMessage,
-} from '../ui/locationMessage.js';
 import { parseFachrichtungCustomId } from '../ui/fachrichtungMessage.js';
 import { RULES_ACCEPT_BUTTON_CUSTOM_ID } from '../ui/rulesMessage.js';
 import {
@@ -212,11 +198,6 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
-  if (interaction.customId === LOCATION_SEARCH_BUTTON_CUSTOM_ID) {
-    await handleLocationSearchButton(interaction);
-    return;
-  }
-
   const fachrichtung = parseFachrichtungCustomId(interaction.customId);
   if (fachrichtung) {
     await handleFachrichtungSelect(interaction, fachrichtung);
@@ -291,15 +272,6 @@ async function handleProfileDetailsButton(interaction: ButtonInteraction): Promi
   }
 }
 
-/** Oeffnet das Standort-Suchmodal (siehe locationMessage.ts). */
-async function handleLocationSearchButton(interaction: ButtonInteraction): Promise<void> {
-  try {
-    await interaction.showModal(buildLocationSearchModal());
-  } catch (error) {
-    await handleInteractionError(interaction, error);
-  }
-}
-
 /**
  * Verarbeitet den Klick auf einen Fachrichtungs-Button. Fachrichtung ist
  * (anders als die Klasse) ein reiner Eintrittsflow-Schritt ohne Discord-
@@ -335,79 +307,16 @@ async function handleFachrichtungSelect(
 async function handleModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
   if (interaction.customId === PROFILE_DETAILS_MODAL_CUSTOM_ID) {
     await handleProfileDetailsModalSubmit(interaction);
-    return;
-  }
-  if (interaction.customId === LOCATION_SEARCH_MODAL_CUSTOM_ID) {
-    await handleLocationSearchModalSubmit(interaction);
   }
 }
 
 /**
- * Verarbeitet den abgesendeten Standort-Suchbegriff: bei genau einem Treffer
- * wird der Standort direkt uebernommen und das Profil abgeschlossen (wie
- * bisher bei /standort-waehlen), bei mehreren Treffern eine Auswahlliste
- * gezeigt (siehe handleLocationSelect()), bei keinem/zu vielen Treffern ein
- * Hinweis, den Suchbegriff anzupassen.
+ * Verarbeitet die abgesendeten Pflichtangaben (Vorname/Nachname/Alter) und
+ * schliesst das Profil direkt im selben Zug ab (kein separater Standort-
+ * Zwischenschritt mehr, siehe memberJourneyService.ts) - dieselbe
+ * "Antwort + naechster Schritt in einem Rutsch"-Logik wie bei
+ * handleFachrichtungSelect()/handleClassConfirm().
  */
-async function handleLocationSearchModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
-  try {
-    const member = await resolveInteractionMember(interaction);
-    if (!member) {
-      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
-      return;
-    }
-
-    const query = interaction.fields.getTextInputValue(LOCATION_SEARCH_INPUT_ID);
-    const matches = await searchActiveLocations(query, MAX_LOCATION_CHOICES + 1);
-
-    if (matches.length === 0) {
-      const { embeds, components } = buildNoLocationMatchesMessage(query);
-      await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
-      return;
-    }
-
-    if (matches.length > MAX_LOCATION_CHOICES) {
-      const { embeds, components } = buildTooManyLocationMatchesMessage(query, matches.length);
-      await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
-      return;
-    }
-
-    if (matches.length > 1) {
-      const { embeds, components } = buildLocationChoicesMessage(matches);
-      await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
-      return;
-    }
-
-    await applyLocationAndReply(interaction, member, matches[0]!.id);
-  } catch (error) {
-    await handleInteractionError(interaction, error);
-  }
-}
-
-/** Gemeinsame Uebernahme-Logik fuer den Standort - bei genau einem Treffer und beim Klick aus der Auswahlliste. */
-async function applyLocationAndReply(
-  interaction: ModalSubmitInteraction | StringSelectMenuInteraction,
-  member: GuildMember,
-  locationId: string,
-): Promise<void> {
-  const guildConfig = await getOrCreateGuildConfig(member.guild.id);
-  await selectLocation(guildConfig, member, locationId, member.id);
-  const completion = await completeProfileAndSetNickname(guildConfig, member, member.id);
-
-  const prefix = completion.nicknameSkipped
-    ? '✅ Standort gespeichert. Dein Server-Nickname konnte nicht automatisch gesetzt werden ' +
-      '(fehlende Berechtigung) - bitte wende dich an einen Admin.'
-    : `✅ Standort gespeichert. Dein Server-Nickname wurde auf "${completion.nickname}" gesetzt.`;
-
-  const nextPart = await buildSafeNextStepReplyPart(member.guild.id, member.id);
-  await interaction.reply({
-    content: [prefix, nextPart.content].filter(Boolean).join('\n\n'),
-    embeds: nextPart.embeds ?? [],
-    components: nextPart.components ?? [],
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
 async function handleProfileDetailsModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
   try {
     const member = await resolveInteractionMember(interaction);
@@ -426,9 +335,20 @@ async function handleProfileDetailsModalSubmit(interaction: ModalSubmitInteracti
 
     const guildConfig = await getOrCreateGuildConfig(member.guild.id);
     await submitPersonalDetails(guildConfig, member, { vorname, nachname, alter }, member.id);
+    const completion = await completeProfileAndSetNickname(guildConfig, member, member.id);
 
-    const { embeds, components } = buildProfileDetailsSavedMessage();
-    await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
+    const prefix = completion.nicknameSkipped
+      ? '✅ Angaben gespeichert. Dein Server-Nickname konnte nicht automatisch gesetzt werden ' +
+        '(fehlende Berechtigung) - bitte wende dich an einen Admin.'
+      : `✅ Angaben gespeichert. Dein Server-Nickname wurde auf "${completion.nickname}" gesetzt.`;
+
+    const nextPart = await buildSafeNextStepReplyPart(member.guild.id, member.id);
+    await interaction.reply({
+      content: [prefix, nextPart.content].filter(Boolean).join('\n\n'),
+      embeds: nextPart.embeds ?? [],
+      components: nextPart.components ?? [],
+      flags: MessageFlags.Ephemeral,
+    });
   } catch (error) {
     await handleInteractionError(interaction, error);
   }
@@ -659,11 +579,6 @@ async function handleCoursePlanAck(
 }
 
 async function handleSelectMenu(interaction: StringSelectMenuInteraction): Promise<void> {
-  if (interaction.customId === LOCATION_SELECT_CUSTOM_ID) {
-    await handleLocationSelect(interaction);
-    return;
-  }
-
   const question = parseAnswerCustomId(interaction.customId);
   if (!question) return;
 
@@ -677,21 +592,6 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction): Promi
     const state = await submitAnswer(member.guild.id, member.id, question, interaction.values);
     const { embeds, components } = buildOnboardingMessageForState(state);
     await interaction.update({ embeds, components });
-  } catch (error) {
-    await handleInteractionError(interaction, error);
-  }
-}
-
-/** Klick auf einen Standort aus der Auswahlliste (siehe handleLocationSearchModalSubmit()). */
-async function handleLocationSelect(interaction: StringSelectMenuInteraction): Promise<void> {
-  try {
-    const member = await resolveInteractionMember(interaction);
-    if (!member) {
-      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
-      return;
-    }
-
-    await applyLocationAndReply(interaction, member, interaction.values[0]!);
   } catch (error) {
     await handleInteractionError(interaction, error);
   }

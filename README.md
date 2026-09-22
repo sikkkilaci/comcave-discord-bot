@@ -5,7 +5,8 @@ Ein Discord-Bot fuer eine private COMCAVE-Umschulungs-Lerngruppe.
 Auf dem technischen Grundgeruest (Konfiguration, Logging, Datenpersistenz,
 Berechtigungssystem, Command-/Event-Infrastruktur) sind die Kernfunktionen umgesetzt:
 **Verifizierung neuer Mitglieder**, ein **verpflichtendes Teilnehmerprofil** (Vorname/Nachname/
-Alter/COMCAVE-Standort, mit automatischem Server-Nickname), **Serverregeln mit nachvollziehbarer
+Alter, mit automatischem Server-Nickname; der COMCAVE-Standort ist eine optionale Angabe ausserhalb
+des Eintrittsflows), **Serverregeln mit nachvollziehbarer
 Zustimmung**, **dynamisches Onboarding**, **Klassenzuweisung A/B/C**, **private Klassenbereiche**,
 **klassenbezogene Klassenleitung**, **Pruefungen und Termine**, **Tages-/Wochenberichte als
 Berichtsheft-Grundlage**, **strukturiertes Lernmaterial**, ein **Kursplan mit Kenntnisnahme und
@@ -16,12 +17,14 @@ weitergehende Moderation, ...) werden darauf aufbauend schrittweise ergaenzt. De
 Architektur und Roadmap stehen in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 **Eintrittsflow (verbindliche Reihenfolge):** Beitritt → Verifizierung → Teilnehmerprofil
-(Pflichtangaben + COMCAVE-Standort) → Serverregeln (Zustimmung) → bestehendes Onboarding →
-Klassenwahl A/B/C. Jeder Schritt wird ueber eine eigene, bei jedem Zugriff frisch gepruefte
-Gate-Funktion abgesichert (`assertMemberVerified()` → `assertProfileComplete()` →
-`assertRulesAccepted()`), sodass kein Schritt durch einen direkten Command-Aufruf (z. B.
-`/onboarding`) umgangen werden kann - siehe `src/services/memberJourneyService.ts` fuer die
-zentrale "welcher Schritt kommt als naechstes"-Logik.
+(Vorname/Nachname/Alter) → Fachrichtung → Klassenwahl A/B/C (mit expliziter Bestaetigung) →
+bestehendes Onboarding → Serverregeln (Zustimmung) → Rolle „Mitglied". Der COMCAVE-Standort ist
+bewusst KEIN Pflichtschritt darin (der volle Standort-Katalog fuehrte hier nur zu unnoetiger
+Reibung) - er bleibt optional ueber `/standort-waehlen` erreichbar. Jeder Schritt wird ueber eine
+eigene, bei jedem Zugriff frisch gepruefte Gate-Funktion abgesichert (`assertMemberVerified()` →
+`assertProfileComplete()` → ... → `assertRulesAccepted()`), sodass kein Schritt durch einen
+direkten Command-Aufruf (z. B. `/onboarding`) umgangen werden kann - siehe
+`src/services/memberJourneyService.ts` fuer die zentrale "welcher Schritt kommt als naechstes"-Logik.
 
 ## 🚀 Server-Bootstrap (`/setup-server`)
 
@@ -81,20 +84,21 @@ sucht dazu ueber alle Server, auf denen er aktiv ist, nach dem passenden Mitglie
 ## Teilnehmerprofil (Pflichtangaben)
 
 Direkt nach der Verifizierung muss jedes Mitglied ein Pflichtprofil ausfuellen, bevor es mit
-Onboarding oder Klassenwahl fortfahren kann (`src/services/memberProfileService.ts`):
+Fachrichtung, Klassenwahl oder Onboarding fortfahren kann (`src/services/memberProfileService.ts`):
 
 1. **Vorname, Nachname, Alter** - per Discord-Modal (Button "Angaben machen"). Validierung:
-   Namen nicht leer/max. 50 Zeichen, Alter eine ganze Zahl zwischen 14 und 99. Wird noch NICHT
-   als abgeschlossen markiert.
-2. **COMCAVE-Standort** - `/standort-waehlen standort:<Suche>`. Der Standort-Parameter nutzt
-   Discord-**Autocomplete** (Suche nach Name/Stadt/PLZ, max. 25 Vorschlaege) statt einer festen
-   Auswahlliste, da perspektivisch 300+ Standorte unterstuetzt werden sollen (siehe Abschnitt
-   "COMCAVE-Standorte" unten).
-3. Sobald beides vorliegt, setzt der Bot automatisch den **serverbezogenen Nickname** auf
-   `Vorname Nachname` (`src/services/discordNicknameSync.ts`) - **niemals** den globalen
-   Discord-Benutzernamen. Schlaegt das Setzen fehl (fehlende `ManageNicknames`-Berechtigung oder
-   Server-Owner als Zielperson), wird das ohne Absturz uebersprungen und der restliche Flow laeuft
-   trotzdem weiter.
+   Namen nicht leer/max. 50 Zeichen, Alter eine ganze Zahl zwischen 14 und 99.
+2. Der Bot schliesst das Profil direkt im selben Zug ab und setzt automatisch den
+   **serverbezogenen Nickname** auf `Vorname Nachname` (`src/services/discordNicknameSync.ts`) -
+   **niemals** den globalen Discord-Benutzernamen. Schlaegt das Setzen fehl (fehlende
+   `ManageNicknames`-Berechtigung oder Server-Owner als Zielperson), wird das ohne Absturz
+   uebersprungen und der restliche Flow laeuft trotzdem weiter.
+
+**COMCAVE-Standort (optional, kein Pflichtschritt):** `/standort-waehlen standort:<Suche>`. Der
+Standort-Parameter nutzt Discord-**Autocomplete** (Suche nach Name/Stadt/PLZ, max. 25 Vorschlaege)
+statt einer festen Auswahlliste, da perspektivisch 300+ Standorte unterstuetzt werden sollen (siehe
+Abschnitt "COMCAVE-Standorte" unten). Der volle Katalog war als Pflichtschritt im Eintrittsflow zu
+ueberladen, daher ist die Angabe jederzeit optional nachholbar.
 
 `assertProfileComplete()` prueft bei jedem nachgelagerten Zugriff (Onboarding, Klassenwahl) frisch,
 ob das Profil vollstaendig ist - ein direkter `/onboarding`-Aufruf vor Profilabschluss wird

@@ -9,7 +9,6 @@ import { getOnboardingState } from '../services/onboardingService.js';
 import { showRulesToMember } from '../services/ruleService.js';
 import { buildOnboardingMessageForState } from './ui/onboardingMessage.js';
 import { buildProfileDetailsPromptMessage } from './ui/profileMessage.js';
-import { buildLocationPromptMessage } from './ui/locationMessage.js';
 import { buildFachrichtungMessage } from './ui/fachrichtungMessage.js';
 import { buildClassSelectionMessage } from './ui/classMessage.js';
 import { getConfirmedClassOverview } from '../services/classService.js';
@@ -26,8 +25,8 @@ export interface JourneyReplyPart {
 
 /**
  * Ermittelt den naechsten offenen Schritt des Eintrittsflows (Verifizierung
- * -> persoenliche Angaben -> Standort -> Fachrichtung -> Klassenwahl ->
- * bestehendes Onboarding -> Regelzustimmung, siehe memberJourneyService.ts)
+ * -> persoenliche Angaben -> Fachrichtung -> Klassenwahl -> bestehendes
+ * Onboarding -> Regelzustimmung, siehe memberJourneyService.ts)
  * und baut die passende Nachricht dafuer. Die EINZIGE Stelle, die nach einem
  * abgeschlossenen Teilschritt entscheidet, was als naechstes gezeigt wird -
  * verhindert, dass die Reihenfolge an mehreren Stellen dupliziert und
@@ -50,8 +49,6 @@ export async function buildSafeNextStepReplyPart(
         return { content: 'Bitte verifiziere dich zuerst (Button oder /verifizieren).' };
       case 'NEEDS_PROFILE_DETAILS':
         return buildProfileDetailsPromptMessage();
-      case 'NEEDS_LOCATION':
-        return buildLocationPromptMessage();
       case 'NEEDS_FACHRICHTUNG':
         return buildFachrichtungMessage();
       case 'NEEDS_CLASS': {

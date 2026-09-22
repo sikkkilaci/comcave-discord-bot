@@ -9,7 +9,6 @@ import {
   setVerificationStatus,
   updatePersonalDetails,
 } from '../src/repositories/memberRepository.js';
-import { upsertLocation } from '../src/repositories/locationRepository.js';
 import { setMemberClass, setMemberFachrichtung } from '../src/repositories/memberRepository.js';
 import { getOrCreateClass } from '../src/repositories/classRepository.js';
 import { updateRules, acceptCurrentRules } from '../src/services/ruleService.js';
@@ -44,6 +43,21 @@ function fakeMemberWithRoles(id: string, initialRoleIds: string[] = []): GuildMe
   } as unknown as GuildMember;
 }
 
+/**
+ * Verifiziert + Pflichtprofil vollstaendig - Zustand direkt vor der
+ * Fachrichtungswahl. Der COMCAVE-Standort ist bewusst kein Bestandteil
+ * (kein Pflichtschritt mehr im Eintrittsflow, siehe memberJourneyService.ts).
+ */
+async function prepareCompleteProfile(guildId: string, discordId: string): Promise<void> {
+  await setVerificationStatus(guildId, discordId, 'VERIFIED');
+  await updatePersonalDetails(guildId, discordId, {
+    firstName: 'Max',
+    lastName: 'Mustermann',
+    age: 25,
+    profileCompletedAt: new Date(),
+  });
+}
+
 describe('resolveNextJourneyStep', () => {
   it('NEEDS_VERIFICATION, wenn kein Member-Datensatz existiert oder nicht verifiziert ist', async () => {
     const guildId = `guild-${randomUUID()}`;
@@ -65,44 +79,11 @@ describe('resolveNextJourneyStep', () => {
     expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_PROFILE_DETAILS');
   });
 
-  it('NEEDS_LOCATION, wenn persoenliche Angaben vorhanden sind, aber kein Standort/Abschluss', async () => {
+  it('NEEDS_FACHRICHTUNG, wenn das Profil vollstaendig ist, aber noch keine Fachrichtung gewaehlt wurde', async () => {
     const guildId = `guild-${randomUUID()}`;
     await getOrCreateGuildConfig(guildId);
     const discordId = `discord-${randomUUID()}`;
-    await setVerificationStatus(guildId, discordId, 'VERIFIED');
-    await updatePersonalDetails(guildId, discordId, {
-      firstName: 'Max',
-      lastName: 'Mustermann',
-      age: 25,
-    });
-
-    expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_LOCATION');
-  });
-
-  /** Verifiziert + Profil + Standort komplett - Zustand direkt vor der Fachrichtungswahl. */
-  async function prepareUntilLocation(guildId: string, discordId: string): Promise<void> {
-    await setVerificationStatus(guildId, discordId, 'VERIFIED');
-    const { location } = await upsertLocation({
-      code: `code-${randomUUID()}`,
-      name: 'COMCAVE Test',
-      state: 'Teststate',
-      city: 'Teststadt',
-      postalCode: '11111',
-    });
-    await updatePersonalDetails(guildId, discordId, {
-      firstName: 'Max',
-      lastName: 'Mustermann',
-      age: 25,
-      locationId: location.id,
-      profileCompletedAt: new Date(),
-    });
-  }
-
-  it('NEEDS_FACHRICHTUNG, wenn Profil und Standort da sind, aber noch keine Fachrichtung gewaehlt wurde', async () => {
-    const guildId = `guild-${randomUUID()}`;
-    await getOrCreateGuildConfig(guildId);
-    const discordId = `discord-${randomUUID()}`;
-    await prepareUntilLocation(guildId, discordId);
+    await prepareCompleteProfile(guildId, discordId);
 
     expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_FACHRICHTUNG');
   });
@@ -111,7 +92,7 @@ describe('resolveNextJourneyStep', () => {
     const guildId = `guild-${randomUUID()}`;
     await getOrCreateGuildConfig(guildId);
     const discordId = `discord-${randomUUID()}`;
-    await prepareUntilLocation(guildId, discordId);
+    await prepareCompleteProfile(guildId, discordId);
     await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
 
     expect(await resolveNextJourneyStep(guildId, discordId)).toBe('NEEDS_CLASS');
@@ -121,7 +102,7 @@ describe('resolveNextJourneyStep', () => {
     const guildId = `guild-${randomUUID()}`;
     await getOrCreateGuildConfig(guildId);
     const discordId = `discord-${randomUUID()}`;
-    await prepareUntilLocation(guildId, discordId);
+    await prepareCompleteProfile(guildId, discordId);
     await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
     const klasse = await getOrCreateClass(guildId, 'A');
     await setMemberClass(guildId, discordId, klasse.id);
@@ -133,7 +114,7 @@ describe('resolveNextJourneyStep', () => {
     const guildId = `guild-${randomUUID()}`;
     await getOrCreateGuildConfig(guildId);
     const discordId = `discord-${randomUUID()}`;
-    await prepareUntilLocation(guildId, discordId);
+    await prepareCompleteProfile(guildId, discordId);
     await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
     const klasse = await getOrCreateClass(guildId, 'A');
     await setMemberClass(guildId, discordId, klasse.id);
@@ -147,7 +128,7 @@ describe('resolveNextJourneyStep', () => {
     const guildId = `guild-${randomUUID()}`;
     const guildConfig = await getOrCreateGuildConfig(guildId);
     const discordId = `discord-${randomUUID()}`;
-    await prepareUntilLocation(guildId, discordId);
+    await prepareCompleteProfile(guildId, discordId);
     await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
     const klasse = await getOrCreateClass(guildId, 'A');
     await setMemberClass(guildId, discordId, klasse.id);
@@ -166,21 +147,7 @@ describe('grantOnboardedRoleIfComplete', () => {
     discordId: string,
   ): Promise<Awaited<ReturnType<typeof getOrCreateGuildConfig>>> {
     const guildConfig = await getOrCreateGuildConfig(guildId);
-    await setVerificationStatus(guildId, discordId, 'VERIFIED');
-    const { location } = await upsertLocation({
-      code: `code-${randomUUID()}`,
-      name: 'COMCAVE Test',
-      state: 'Teststate',
-      city: 'Teststadt',
-      postalCode: '11111',
-    });
-    await updatePersonalDetails(guildId, discordId, {
-      firstName: 'Max',
-      lastName: 'Mustermann',
-      age: 25,
-      locationId: location.id,
-      profileCompletedAt: new Date(),
-    });
+    await prepareCompleteProfile(guildId, discordId);
     await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
     const klasse = await getOrCreateClass(guildId, 'A');
     await setMemberClass(guildId, discordId, klasse.id);
@@ -244,21 +211,7 @@ describe('grantOnboardedRoleIfComplete', () => {
     const guildId = `guild-${randomUUID()}`;
     const discordId = `discord-${randomUUID()}`;
     const guildConfig = await updateGuildConfig(guildId, { onboardedRoleId: 'role-onboarded' });
-    await setVerificationStatus(guildId, discordId, 'VERIFIED');
-    const { location } = await upsertLocation({
-      code: `code-${randomUUID()}`,
-      name: 'COMCAVE Test',
-      state: 'Teststate',
-      city: 'Teststadt',
-      postalCode: '11111',
-    });
-    await updatePersonalDetails(guildId, discordId, {
-      firstName: 'Max',
-      lastName: 'Mustermann',
-      age: 25,
-      locationId: location.id,
-      profileCompletedAt: new Date(),
-    });
+    await prepareCompleteProfile(guildId, discordId);
     await setMemberFachrichtung(guildId, discordId, 'SYSTEMINTEGRATION');
     // Bewusst KEINE Klasse zugewiesen - der naechste offene Schritt ist NEEDS_CLASS.
     const member = fakeMemberWithRoles(discordId);

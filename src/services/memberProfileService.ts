@@ -38,19 +38,18 @@ function buildNickname(firstName: string, lastName: string): string {
 
 /**
  * Stellt sicher, dass ein Mitglied die Pflichtangaben (Vorname, Nachname,
- * Alter, COMCAVE-Standort) bereits vollstaendig gemacht hat, bevor es an
- * nachgelagerten Funktionen (Regelzustimmung, Onboarding, Klassenwahl)
- * teilnimmt. Zentraler Guard nach demselben Prinzip wie
- * assertMemberVerified() - wird bei jedem Zugriff frisch geprueft, damit ein
- * direkter Aufruf von z. B. /onboarding vor Abschluss des Profils fail-closed
- * abgelehnt wird.
+ * Alter) bereits vollstaendig gemacht hat, bevor es an nachgelagerten
+ * Funktionen (Regelzustimmung, Onboarding, Klassenwahl) teilnimmt. Zentraler
+ * Guard nach demselben Prinzip wie assertMemberVerified() - wird bei jedem
+ * Zugriff frisch geprueft, damit ein direkter Aufruf von z. B. /onboarding
+ * vor Abschluss des Profils fail-closed abgelehnt wird.
  */
 export async function assertProfileComplete(guildId: string, discordId: string): Promise<Member> {
   const member = await getMember(guildId, discordId);
   if (!member || !member.profileCompletedAt) {
     throw new PermissionError(
-      'Bitte vervollstaendige zuerst dein Teilnehmerprofil (Vorname, Nachname, Alter, ' +
-        'COMCAVE-Standort), bevor du fortfaehrst.',
+      'Bitte vervollstaendige zuerst dein Teilnehmerprofil (Vorname, Nachname, Alter), ' +
+        'bevor du fortfaehrst.',
     );
   }
   return member;
@@ -63,11 +62,9 @@ export interface PersonalDetailsInput {
 }
 
 /**
- * Speichert Vorname/Nachname/Alter eines verifizierten Mitglieds (erster
- * Teil des Pflichtprofils, siehe Modal in profileMessage.ts). Setzt noch
- * NICHT `profileCompletedAt` - das geschieht erst in
- * completeProfileAndSetNickname(), sobald zusaetzlich ein Standort gewaehlt
- * wurde.
+ * Speichert Vorname/Nachname/Alter eines verifizierten Mitglieds (Pflicht-
+ * profil, siehe Modal in profileMessage.ts). Setzt noch NICHT
+ * `profileCompletedAt` - das geschieht erst in completeProfileAndSetNickname().
  */
 export async function submitPersonalDetails(
   guildConfig: GuildConfig,
@@ -99,11 +96,11 @@ export async function submitPersonalDetails(
 }
 
 /**
- * Setzt den COMCAVE-Standort eines Mitglieds (zweiter Teil des
- * Pflichtprofils, siehe `/standort-waehlen`). Die `locationId` wird immer
- * gegen die Datenbank aufgeloest (getLocationById()) und muss aktiv sein -
- * eine manipulierte/veraltete ID aus einer Autocomplete-Antwort wird dadurch
- * fail-closed abgelehnt.
+ * Setzt den COMCAVE-Standort eines Mitglieds - optionale Angabe, siehe
+ * `/standort-waehlen` (kein Pflichtschritt im Eintrittsflow). Die
+ * `locationId` wird immer gegen die Datenbank aufgeloest (getLocationById())
+ * und muss aktiv sein - eine manipulierte/veraltete ID aus einer
+ * Autocomplete-Antwort wird dadurch fail-closed abgelehnt.
  */
 export async function selectLocation(
   guildConfig: GuildConfig,
@@ -144,13 +141,14 @@ export interface ProfileCompletionResult {
 }
 
 /**
- * Schliesst das Pflichtprofil ab, sobald sowohl die persoenlichen Angaben
- * (submitPersonalDetails()) als auch der Standort (selectLocation()) gesetzt
- * sind: setzt `profileCompletedAt` und synchronisiert den Server-Nickname zu
- * "Vorname Nachname" (niemals den globalen Discord-Username - siehe
- * discordNicknameSync.ts). Ein Fehlschlag beim Nickname-Setzen (fehlende
- * Berechtigung, Server-Owner) blockiert den Profilabschluss NICHT - siehe
- * trySetNickname().
+ * Schliesst das Pflichtprofil ab, sobald die persoenlichen Angaben
+ * (submitPersonalDetails()) gesetzt sind: setzt `profileCompletedAt` und
+ * synchronisiert den Server-Nickname zu "Vorname Nachname" (niemals den
+ * globalen Discord-Username - siehe discordNicknameSync.ts). Der COMCAVE-
+ * Standort (selectLocation()) ist dafuer NICHT erforderlich - er ist eine
+ * optionale Angabe ausserhalb des Eintrittsflows. Ein Fehlschlag beim
+ * Nickname-Setzen (fehlende Berechtigung, Server-Owner) blockiert den
+ * Profilabschluss NICHT - siehe trySetNickname().
  */
 export async function completeProfileAndSetNickname(
   guildConfig: GuildConfig,
@@ -165,9 +163,6 @@ export async function completeProfileAndSetNickname(
     throw new ValidationError(
       'Bitte fuelle zuerst deine persoenlichen Angaben (Vorname/Nachname/Alter) aus.',
     );
-  }
-  if (!memberRow.locationId) {
-    throw new ValidationError('Bitte waehle zuerst deinen COMCAVE-Standort aus.');
   }
 
   const nickname = buildNickname(memberRow.firstName, memberRow.lastName);

@@ -188,7 +188,7 @@ describe('memberProfileService', () => {
       ).rejects.toBeInstanceOf(ValidationError);
     });
 
-    it('wirft ValidationError, wenn noch kein Standort gewaehlt wurde', async () => {
+    it('erfordert KEINEN Standort - COMCAVE-Standort ist kein Pflichtschritt im Eintrittsflow', async () => {
       const { guildConfig, discordId } = await setupVerifiedGuildAndMember();
       const member = fakeGuildMember(discordId);
       await submitPersonalDetails(
@@ -200,7 +200,7 @@ describe('memberProfileService', () => {
 
       await expect(
         completeProfileAndSetNickname(guildConfig, member, member.id),
-      ).rejects.toBeInstanceOf(ValidationError);
+      ).resolves.toBeDefined();
     });
 
     it('wirft NotFoundError, wenn kein Member-Datensatz existiert', async () => {
@@ -222,14 +222,6 @@ describe('memberProfileService', () => {
         { vorname: 'Max', nachname: 'Mustermann', alter: 25 },
         member.id,
       );
-      const { location } = await upsertLocation({
-        code: `code-${randomUUID()}`,
-        name: 'COMCAVE Test',
-        state: 'Teststate',
-        city: 'Teststadt',
-        postalCode: '11111',
-      });
-      await selectLocation(guildConfig, member, location.id, member.id);
 
       const result = await completeProfileAndSetNickname(guildConfig, member, member.id);
 
@@ -268,14 +260,6 @@ describe('memberProfileService', () => {
         { vorname: 'Max', nachname: 'Mustermann', alter: 25 },
         member.id,
       );
-      const { location } = await upsertLocation({
-        code: `code-${randomUUID()}`,
-        name: 'COMCAVE Test',
-        state: 'Teststate',
-        city: 'Teststadt',
-        postalCode: '11111',
-      });
-      await selectLocation(guildConfig, member, location.id, member.id);
 
       const result = await completeProfileAndSetNickname(guildConfig, member, member.id);
 
@@ -295,14 +279,6 @@ describe('memberProfileService', () => {
         { vorname: 'Max', nachname: 'Mustermann', alter: 25 },
         member.id,
       );
-      const { location } = await upsertLocation({
-        code: `code-${randomUUID()}`,
-        name: 'COMCAVE Test',
-        state: 'Teststate',
-        city: 'Teststadt',
-        postalCode: '11111',
-      });
-      await selectLocation(guildConfig, member, location.id, member.id);
       await completeProfileAndSetNickname(guildConfig, member, member.id);
 
       await completeProfileAndSetNickname(guildConfig, member, member.id);

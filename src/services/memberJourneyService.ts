@@ -12,19 +12,21 @@ const logger = createChildLogger('memberJourneyService');
 
 /**
  * Alle Schritte des Eintrittsflows in ihrer verbindlichen Reihenfolge:
- * Verifizierung -> persoenliche Angaben -> COMCAVE-Standort -> Fachrichtung
- * -> Klassenwahl -> bestehendes Onboarding -> Regelzustimmung. Regelzustimmung
- * ist bewusst der LETZTE Schritt (nicht wie fruehers vor Klassenwahl/
- * Onboarding) - erst danach gilt ein Mitglied als vollstaendig onboarded und
- * bekommt die eigentliche Server-Sichtbarkeit (siehe
- * grantOnboardedRoleIfComplete() unten). `resolveNextJourneyStep()` ist die
- * EINZIGE Stelle, die diese Reihenfolge kennt - alle Aufrufer fragen hier
- * nach, statt die Reihenfolge selbst zu duplizieren.
+ * Verifizierung -> persoenliche Angaben -> Fachrichtung -> Klassenwahl ->
+ * bestehendes Onboarding -> Regelzustimmung. Der COMCAVE-Standort ist bewusst
+ * KEIN Pflichtschritt mehr im Eintrittsflow (der volle, ueberladene
+ * Standort-Katalog fuehrte hier nur zu Reibung) - Mitglieder koennen ihn
+ * weiterhin optional ueber `/standort-waehlen` angeben. Regelzustimmung ist
+ * bewusst der LETZTE Schritt (nicht wie fruehers vor Klassenwahl/Onboarding)
+ * - erst danach gilt ein Mitglied als vollstaendig onboarded und bekommt die
+ * eigentliche Server-Sichtbarkeit (siehe grantOnboardedRoleIfComplete()
+ * unten). `resolveNextJourneyStep()` ist die EINZIGE Stelle, die diese
+ * Reihenfolge kennt - alle Aufrufer fragen hier nach, statt die Reihenfolge
+ * selbst zu duplizieren.
  */
 export const JOURNEY_STEPS = [
   'NEEDS_VERIFICATION',
   'NEEDS_PROFILE_DETAILS',
-  'NEEDS_LOCATION',
   'NEEDS_FACHRICHTUNG',
   'NEEDS_CLASS',
   'NEEDS_ONBOARDING',
@@ -49,12 +51,8 @@ export async function resolveNextJourneyStep(
     return 'NEEDS_VERIFICATION';
   }
 
-  if (!member.firstName || !member.lastName || member.age === null) {
+  if (!member.firstName || !member.lastName || member.age === null || !member.profileCompletedAt) {
     return 'NEEDS_PROFILE_DETAILS';
-  }
-
-  if (!member.locationId || !member.profileCompletedAt) {
-    return 'NEEDS_LOCATION';
   }
 
   if (!member.fachrichtung) {
