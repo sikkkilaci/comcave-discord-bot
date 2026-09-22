@@ -40,10 +40,19 @@ function removeTestDb(): void {
  * angewendet werden. So testen Repository/Service-Tests gegen ein echtes,
  * per Migration erzeugtes Schema statt gegen Mocks.
  */
+/**
+ * `execFileSync()` sucht die uebergebene Datei ohne Shell-Interpretation -
+ * unter Windows heisst das npm-CLI-Binary aber `npx.cmd`, nicht `npx`
+ * (das nackte `npx` existiert dort nur als Shell-Funktion/Alias). Ohne diese
+ * Fallunterscheidung schlaegt der Aufruf unter Windows mit "spawnSync npx
+ * ENOENT" fehl, obwohl npx tatsaechlich installiert und im PATH ist.
+ */
+const NPX_COMMAND = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
 export default function setup(): () => void {
   removeTestDb();
 
-  execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
+  execFileSync(NPX_COMMAND, ['prisma', 'migrate', 'deploy'], {
     stdio: 'inherit',
     env: { ...process.env, DATABASE_URL: databaseUrl },
   });
