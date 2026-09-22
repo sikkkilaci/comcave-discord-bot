@@ -35,25 +35,35 @@ function removeTestDb(): void {
 }
 
 /**
+ * Windows fuehrt `.cmd`/`.bat`-Dateien (wie `npx.cmd`, dem tatsaechlichen
+ * npx-Binary auf Windows) nicht als eigenstaendiges Programm aus, sondern nur
+ * als Kommando *innerhalb* von `cmd.exe` - `CreateProcess` kann ein Batch-
+ * Skript nicht direkt starten. `execFileSync('npx.cmd', ...)` ohne
+ * Shell-Interpretation schlaegt deshalb mit EINVAL fehl, selbst wenn der
+ * Dateiname korrekt aufgeloest wurde (der zuvor versuchte Fix, nur den
+ * Dateinamen auf `npx.cmd` umzustellen, hat daher nicht ausgereicht). Die von
+ * Node.js selbst empfohlene Loesung ist `shell: true` beim Aufruf einer
+ * `.cmd`/`.bat`-Datei (siehe Node-Doku "Spawning .bat and .cmd files on
+ * Windows") - dann uebernimmt cmd.exe sowohl die PATHEXT-Aufloesung von
+ * `npx` als auch die korrekte Ausfuehrung. Unter Linux/macOS/CI bleibt das
+ * Verhalten unveraendert (shell: false, exakt wie zuvor), da dort kein
+ * Batch-Interpreter noetig ist und die Argumente ohnehin literal sind (kein
+ * Injection-Risiko durch `shell: true`).
+ */
+const IS_WINDOWS = process.platform === 'win32';
+
+/**
  * Vitest globalSetup: legt einmalig vor dem gesamten Testlauf eine frische
  * SQLite-Testdatenbank an, indem die bestehenden Prisma-Migrationen darauf
  * angewendet werden. So testen Repository/Service-Tests gegen ein echtes,
  * per Migration erzeugtes Schema statt gegen Mocks.
  */
-/**
- * `execFileSync()` sucht die uebergebene Datei ohne Shell-Interpretation -
- * unter Windows heisst das npm-CLI-Binary aber `npx.cmd`, nicht `npx`
- * (das nackte `npx` existiert dort nur als Shell-Funktion/Alias). Ohne diese
- * Fallunterscheidung schlaegt der Aufruf unter Windows mit "spawnSync npx
- * ENOENT" fehl, obwohl npx tatsaechlich installiert und im PATH ist.
- */
-const NPX_COMMAND = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-
 export default function setup(): () => void {
   removeTestDb();
 
-  execFileSync(NPX_COMMAND, ['prisma', 'migrate', 'deploy'], {
+  execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
     stdio: 'inherit',
+    shell: IS_WINDOWS,
     env: { ...process.env, DATABASE_URL: databaseUrl },
   });
 
