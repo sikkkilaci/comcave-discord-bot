@@ -106,11 +106,31 @@ Katalog - unbedenklich).
 
 ### Discord-Anbindung
 
-Absichtlich noch KEINE neue Discord-UI/-Commands in diesem Schritt - die
-Daten sind ueber die Service-Schicht (`courseContentService.ts`) bereits
-abrufbar, ein spaeterer `/kursplan`-Ausbau oder ein eigener `/kursinhalte`-
-Command kann darauf direkt aufsetzen, ohne Repository/Service aendern zu
-muessen.
+- `/kursinhalte` (Klasse, VERIFIED) zeigt die Gliederung eines einzelnen
+  Kurses als private Antwort.
+- `/setup-kurskategorien` (nur Admins, siehe `src/services/
+  courseCategoryService.ts`) richtet je Kurs des Katalogs eine eigene, fuer
+  alle vollstaendig onboardeten Mitglieder sichtbare Discord-Kategorie mit
+  einem Kanal (`📄-kursinhalte`) ein - Titel, Zeitraum und die vollstaendige
+  Kursgliederung sind damit dauerhaft und oeffentlich in Discord sichtbar,
+  nicht nur ueber einen Pull-Befehl. Bewusst **eine Kategorie je Kurs** statt
+  je Kalenderwoche: ueber eine mehrjaehrige Ausbildung waere Letzteres nicht
+  durch Discords Limit von ca. 50 Kategorien pro Server gedeckt, Ersteres
+  bleibt fest bei der Anzahl der importierten Kurse (aktuell 34). Start-/
+  Enddatum werden dafuer frisch aus `kursinhalte.json` gelesen
+  (`loadCourseSchedule()`/`parseCourseSchedule()` in
+  `courseContentImportService.ts`) - die DB speichert weiterhin keine Termine
+  (siehe oben). Ein Kurs gilt als klausurrelevant, wenn einer seiner
+  Kursinhalte (nach Entfernen der Nummerierung) mit "Klausur" beginnt, und
+  wird dann mit ⚠️ im Kategorienamen sowie einem Hinweisfeld markiert. Der
+  Befehl ist vollstaendig idempotent: ein erneuter Lauf legt nichts doppelt
+  an, aktualisiert aber Berechtigungen, Kategorienamen (z. B. bei neu
+  erkannter Klausur) und den Inhalt der bereits geposteten Nachricht.
+- **Bekannte Luecke:** Der Kurs "Vorbereitung auf eine medieninformations-
+  technische Umschulung" (17.04.2026 - 19.06.2026) ist bisher NICHT Teil von
+  `kursinhalte.json` und erscheint daher weder im Katalog noch unter den
+  Kurs-Kategorien - er muesste zuerst analog zu den anderen 34 Kursen
+  strukturiert erfasst und importiert werden.
 
 ### Keine personenbezogenen Daten
 

@@ -4,8 +4,14 @@ import type { CourseContentItem } from '@prisma/client';
 /** Discord erlaubt maximal 4096 Zeichen in einer Embed-Beschreibung. */
 const MAX_DESCRIPTION_LENGTH = 4096;
 
-/** Rueckt einen Inhaltseintrag entsprechend seiner Hierarchieebene ein (level 1 = keine Einrueckung). */
-function formatContentLine(item: CourseContentItem): string {
+/**
+ * Rueckt einen Inhaltseintrag entsprechend seiner Hierarchieebene ein (level 1 = keine
+ * Einrueckung). Exportiert, da courseCategoryMessage.ts dieselbe Formatierung fuer die
+ * Kurs-Kategorien-Uebersicht wiederverwendet.
+ */
+export function formatContentLine(
+  item: Pick<CourseContentItem, 'level' | 'numberPath' | 'text'>,
+): string {
   const indent = '　'.repeat(Math.max(item.level - 1, 0));
   return `${indent}${item.numberPath}. ${item.text}`;
 }

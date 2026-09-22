@@ -10,7 +10,9 @@ import {
   DEFAULT_COURSE_CONTENT_SOURCE_FILE,
   importCourseContentAsAdmin,
   importCourseContentFromFile,
+  loadCourseSchedule,
   parseCourseContentSource,
+  parseCourseSchedule,
   reconstructCourseContentHierarchy,
 } from '../src/services/courseContentImportService.js';
 import { PermissionError, ValidationError } from '../src/utils/errors.js';
@@ -117,6 +119,72 @@ describe('parseCourseContentSource', () => {
     };
 
     expect(() => parseCourseContentSource(JSON.stringify(source))).toThrow(ValidationError);
+  });
+});
+
+describe('parseCourseSchedule', () => {
+  it('parst Kursnummer/-titel und Start-/Enddatum aus der Quelldatei, ohne die DB zu beruehren', () => {
+    const result = parseCourseSchedule(
+      JSON.stringify({
+        courses: [
+          { courseId: 'a', title: 'Kurs A', start: '17.08.2026', end: '27.08.2026' },
+          { courseId: 'b', title: 'Kurs B', start: '28.08.2026', end: '04.09.2026' },
+        ],
+      }),
+    );
+
+    expect(result).toEqual([
+      {
+        courseNumber: 'a',
+        courseTitle: 'Kurs A',
+        start: new Date(2026, 7, 17),
+        end: new Date(2026, 7, 27),
+      },
+      {
+        courseNumber: 'b',
+        courseTitle: 'Kurs B',
+        start: new Date(2026, 7, 28),
+        end: new Date(2026, 8, 4),
+      },
+    ]);
+  });
+
+  it('wirft ValidationError bei ungueltigem JSON', () => {
+    expect(() => parseCourseSchedule('{ das ist kein json')).toThrow(ValidationError);
+  });
+
+  it('wirft ValidationError bei fehlenden Pflichtfeldern', () => {
+    expect(() =>
+      parseCourseSchedule(JSON.stringify({ courses: [{ courseId: 'a', title: 'Kurs A' }] })),
+    ).toThrow(ValidationError);
+  });
+
+  it('wirft eine kursbezogene ValidationError bei einem ungueltigen Datum', () => {
+    expect(() =>
+      parseCourseSchedule(
+        JSON.stringify({
+          courses: [{ courseId: 'a', title: 'Kurs A', start: '31.02.2026', end: '01.03.2026' }],
+        }),
+      ),
+    ).toThrow(/Kurs "a" \(Kurs A\)/);
+  });
+});
+
+describe('loadCourseSchedule - reale Kursinhalte-Quelldatei', () => {
+  it('liest alle 34 Kurse mit Start-/Enddatum, sortierbar unabhaengig von der DB', async () => {
+    const schedule = await loadCourseSchedule(DEFAULT_COURSE_CONTENT_SOURCE_FILE);
+
+    expect(schedule).toHaveLength(34);
+    const entry = schedule.find((course) => course.courseNumber === '567472');
+    expect(entry).toMatchObject({ courseTitle: 'Allgemeine Betriebswirtschaftslehre' });
+    expect(entry?.start).toEqual(new Date(2026, 8, 21));
+    expect(entry?.end).toEqual(new Date(2026, 9, 6));
+  });
+
+  it('wirft eine verstaendliche ValidationError, wenn die Quelldatei nicht existiert', async () => {
+    await expect(
+      loadCourseSchedule(`data/course-plans/.does-not-exist-${randomUUID()}.json`),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });
 
