@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>COMCAVE Discord Bot — Serverstruktur-Dokumentation</title>
+<style>
+  :root{
+    --bg:#0f1115; --bg2:#161922; --card:#1b1f2a; --border:#2a2f3d;
+    --text:#e6e8ee; --muted:#9aa3b5; --accent:#6ea8fe; --ok:#4caf7d; --warn:#e0a92d; --bad:#e0605a; --unk:#8b8fa3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  header{padding:28px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+  h1{margin:0 0 6px;font-size:26px}
+  header p{margin:0;color:var(--muted)}
+  nav{position:sticky;top:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;flex-wrap:wrap;gap:4px 14px;z-index:10;font-size:13px}
+  nav a{color:var(--accent);text-decoration:none;white-space:nowrap}
+  nav a:hover{text-decoration:underline}
+  main{max-width:1180px;margin:0 auto;padding:24px 20px 80px}
+  section{margin:38px 0}
+  h2{font-size:20px;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:14px}
+  h3{font-size:16px;color:var(--accent);margin:22px 0 8px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:12px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0 20px}
+  th,td{border:1px solid var(--border);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:#20242f;color:var(--text);position:sticky;top:41px}
+  tr:nth-child(even) td{background:#171b24}
+  code{background:#0f1219;border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:12.5px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)} .unk{color:var(--unk)}
+  .pill.ok{background:#12331f;color:var(--ok)} .pill.warn{background:#3a2d0f;color:var(--warn)}
+  .pill.bad{background:#3a1414;color:var(--bad)} .pill.unk{background:#26293a;color:var(--unk)}
+  .soll-ist{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+  .soll-ist>div{border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+  .soll-ist .soll{border-left:4px solid var(--accent)}
+  .soll-ist .ist.ok{border-left:4px solid var(--ok)}
+  .soll-ist .ist.bad{border-left:4px solid var(--bad)}
+  .soll-ist .ist.unk{border-left:4px solid var(--unk)}
+  .note{color:var(--muted);font-size:13px}
+  .matrix td.yes{color:var(--ok)} .matrix td.read{color:var(--warn)} .matrix td.no{color:var(--bad)} .matrix td.na{color:var(--unk)}
+  footer{padding:20px;text-align:center;color:var(--muted);font-size:12.5px;border-top:1px solid var(--border)}
+  @media (max-width:720px){ .soll-ist{grid-template-columns:1fr} table{font-size:12px} th{position:static} }
+</style>
+</head>
+<body>
+<header>
+  <h1>COMCAVE Discord Bot — Serverstruktur-Dokumentation</h1>
+  <p>Rollen · Kategorien · Kanäle · Berechtigungsmatrix · Soll/Ist-Abgleich — Stand 2026-09-22, Commit <code>b4f6b72</code></p>
+</header>
+<nav>
+  <a href="#ueberblick">Überblick</a>
+  <a href="#rollen">Rollen</a>
+  <a href="#gate">Access-Gate</a>
+  <a href="#kategorien">Kategorien</a>
+  <a href="#klassenbereiche">Klassenbereiche</a>
+  <a href="#matrix">Permission-Matrix</a>
+  <a href="#abweichungen">Abweichungen</a>
+</nav>
+<main>
+
+<section id="ueberblick">
+  <h2>Überblick</h2>
+  <div class="card">
+    <p><strong>Wichtiger Grundsatz dieser Dokumentation:</strong> Alles, was aus dem Repository-Code stammt, ist mit <span class="pill ok">✅ Code</span> markiert und tatsächlich implementiert. Der <strong>reale Discord-Zustand</strong> wird separat mit <span class="pill unk">❓ Discord ungeprüft</span> bzw. konkret bestätigten Ergebnissen markiert — Code allein beweist nie den Live-Zustand.</p>
+    <p class="note">Legende: <span class="pill ok">✅ implementiert</span> <span class="pill warn">⚠️ teilweise</span> <span class="pill bad">❌ nicht implementiert</span> <span class="pill unk">❓ ungeprüft</span></p>
+  </div>
+</section>
+
+<section id="rollen">
+  <h2>Rollen</h2>
+  <table>
+    <tr><th>Rolle</th><th>Zweck</th><th>Vergabe</th><th>Entzug</th><th>Berechtigungen</th><th>Ausdrücklich NICHT</th><th>Bereiche</th><th>Status</th></tr>
+    <tr>
+      <td><strong>@everyone</strong></td><td>Basisrolle, jeder Discord-Nutzer</td><td>automatisch</td><td>nie</td>
+      <td>Nur <code>🔐-verifizierung</code> (view+write)</td><td>Kein Zugriff auf 02–08, keine Klassenbereiche</td><td>Verifizierung</td>
+      <td><span class="pill ok">✅ Code</span></td>
+    </tr>
+    <tr>
+      <td><strong>Verifiziert</strong></td><td>Schritt 1 des Gates abgeschlossen (Identität bestätigt)</td>
+      <td><code>verificationService.setMemberVerification()</code></td><td>kein Entzugspfad im Code</td>
+      <td>zusätzlich <code>🏫 Schulhof</code> (view+write)</td>
+      <td><strong>nicht</strong> Kategorien 01(übrige)–07 — die sind an „Mitglied" gebunden, nicht an „Verifiziert"</td>
+      <td>Verifizierung, Schulhof</td>
+      <td><span class="pill ok">✅ Code</span> · <span class="pill unk">❓ Discord</span></td>
+    </tr>
+    <tr>
+      <td><strong>Mitglied</strong><br><span class="note">(GuildConfig.onboardedRoleId)</span></td>
+      <td>Kompletter Eintrittsflow abgeschlossen (Schritt 9)</td>
+      <td><code>grantOnboardedRoleIfComplete()</code>, nur nach Regelwerk-Zustimmung</td>
+      <td>kein automatischer Entzugspfad</td>
+      <td>schaltet Kategorien 01(übrige)–07 frei (lesen, teils schreiben)</td>
+      <td>keine Administrator-Rechte, <strong>kein</strong> automatischer Zugriff auf Klassenbereiche (s. Matrix)</td>
+      <td>02·ZENTRALE – 07·LERNRÄUME</td>
+      <td><span class="pill ok">✅ Code</span> · <span class="pill unk">❓ Discord</span></td>
+    </tr>
+    <tr>
+      <td><strong>Admin</strong></td><td>Serververwaltung</td><td><code>/setup-admin-rollen</code> / Bootstrap</td><td>manuell in Discord</td>
+      <td>voller Zugriff auf 08·INTERN, alle Klassenbereiche, alle Admin-Commands</td>
+      <td>Discord-„Administrator"-Flag ist verboten (Fail-Closed-Check vor Bootstrap)</td>
+      <td>alle</td><td><span class="pill ok">✅ Code</span></td>
+    </tr>
+    <tr>
+      <td><strong>Moderator</strong></td><td>eingeschränkte Verwaltung</td><td><code>/setup-admin-rollen</code> / Bootstrap</td><td>manuell</td>
+      <td>08·INTERN, Schreibrecht in Mitglied-Kanälen, erweiterte Voice-Mod-Rechte in Klassenbereichen</td>
+      <td>keine Administrator-Rechte; <strong>kein</strong> expliziter Overwrite auf 🏫 Schulhof (s. Abweichungen)</td>
+      <td>08·INTERN, Klassenbereiche (Voice-Mod)</td><td><span class="pill ok">✅ Code</span></td>
+    </tr>
+    <tr>
+      <td><strong>Klasse A / B / C</strong></td><td>Zugehörigkeit zu genau einer Klasse</td>
+      <td><code>assignClass()</code> nach expliziter Klassenbestätigung</td>
+      <td>nur Admin-Override <code>/mitglied-klasse-aendern</code></td>
+      <td>view+teilweise write im <strong>eigenen</strong> privaten Klassenbereich inkl. Voice</td>
+      <td>kein Zugriff auf andere Klassenbereiche (separate Rolle je Klasse)</td>
+      <td>eigener Klassenbereich</td>
+      <td><span class="pill ok">✅ Code</span> · <span class="pill warn">⚠️ wird zu früh vergeben (Schritt 6 statt 9)</span></td>
+    </tr>
+    <tr>
+      <td><strong>Klassenleitung A / B / C</strong></td><td>klassenbezogene Administration ohne globale Rechte</td>
+      <td><code>/setup-klassenleitung</code></td><td><code>/entferne-klassenleitung</code></td>
+      <td>Prüfungen/Termine/Lernmaterial/Berichte im eigenen Klassenbereich verwalten</td>
+      <td>keine Rechte in fremden Klassenbereichen, keine globalen Admin-Rechte</td>
+      <td>eigener Klassenbereich</td><td><span class="pill ok">✅ Code</span></td>
+    </tr>
+    <tr>
+      <td><strong>Bot-Rolle</strong></td><td>technischer Träger der Bot-Berechtigungen</td><td>automatisch bei Einladung</td><td>—</td>
+      <td>eigener Allow-Overwrite in jeder verwalteten Kategorie/jedem Kanal</td><td>—</td><td>alle</td><td><span class="pill ok">✅ Code</span></td>
+    </tr>
+  </table>
+</section>
+
+<section id="gate">
+  <h2>Access-Gate / User Journey</h2>
+  <div class="card">
+    <p><code>Verifizierung → Profil/Name → Standort → Fachrichtung → Klasse → explizite Klassenbestätigung → Onboarding-Fragebogen → Regeln → Rolle „Mitglied"</code></p>
+    <p class="note">Implementiert in <code>memberJourneyService.ts</code> (<code>JOURNEY_STEPS</code>) und <code>journeyFlow.ts</code>. Der gesamte Flow läuft per DM/ephemere Interaktionen — unabhängig von Kanal-Sichtbarkeit.</p>
+  </div>
+
+  <div class="soll-ist">
+    <div class="soll"><strong>SOLL — Schulhof</strong><p>Einziger allgemeiner Bereich für nicht vollständig onboardete Teilnehmer, zusätzlich zum notwendigen Verifizierungskanal.</p></div>
+    <div class="ist unk"><strong>IST</strong><p><span class="pill ok">✅ Code</span> — Kanal wird von <code>serverBootstrapService.ts</code> korrekt erzeugt, an Rolle „Verifiziert" gebunden.<br><span class="pill bad">❌ Discord (Zielserver, Screenshot bestätigt)</span> — Kanal fehlt aktuell live. Wahrscheinlichste Ursache: Bot-Prozess beim letzten <code>/setup-server</code>-Lauf nicht auf aktuellem Commit-Stand.</p></div>
+  </div>
+
+  <div class="soll-ist">
+    <div class="soll"><strong>SOLL — Klassenbestätigung</strong><p>Darf NICHT automatisch vollständigen Plattformzugriff freischalten. Klassenbereich soll erst nach vollständigem Abschluss (Rolle „Mitglied") zugänglich sein.</p></div>
+    <div class="ist bad"><strong>IST</strong><p><span class="pill warn">⚠️ Abweichung bestätigt</span> — <code>assignClass()</code> vergibt die Klassenrolle bereits bei Bestätigung (Schritt 6). <code>assertClassReadAccess()</code> prüft nur <code>ownClassId</code>, nicht den Onboarding-Abschluss. Der private Klassenbereich ist damit vor Abschluss von Onboarding-Fragebogen und Regelwerk sichtbar/nutzbar.</p></div>
+  </div>
+
+  <div class="soll-ist">
+    <div class="soll"><strong>SOLL — Klasse A/B/C-Trennung</strong><p>Muss die privaten Klassenbereiche tatsächlich voneinander trennen. „Mitglied" darf nicht automatisch Zugriff auf alle Klassenbereiche geben.</p></div>
+    <div class="ist ok"><strong>IST</strong><p><span class="pill ok">✅ Code korrekt</span> — jede Klasse hat eigene Rolle + eigenen <code>@everyone</code>-Deny-Overwrite in <code>classAreaService.ts</code>; die Rolle „Mitglied" hat <strong>keinen</strong> Overwrite auf Klassenbereiche. Trennung selbst funktioniert wie vorgesehen (unabhängig vom Zeitpunkt-Problem oben).</p></div>
+  </div>
+</section>
+
+<section id="kategorien">
+  <h2>Globale Kategorien &amp; Kanäle</h2>
+  <p class="note">Quelle: <code>globalServerStructureService.ts</code> (<code>STRUCTURE</code>). Access-Stufen: <strong>PUBLIC</strong> = <code>@everyone</code>, <strong>VERIFIED</strong> = Rolle „Mitglied" (<code>onboardedRoleId</code> — <strong>nicht</strong> „Verifiziert", s. Hinweis im Code), <strong>STAFF</strong> = nur Admin/Moderator/Bot.</p>
+
+  <table>
+    <tr><th>Kategorie</th><th>Access</th><th>Kanal</th><th>Typ</th><th>Zweck</th><th>Bot-Funktion dahinter</th><th>Status</th></tr>
+    <tr><td rowspan="5"><strong>01 · START</strong><br>(Kategorie selbst PUBLIC, Kanäle einzeln überschrieben)</td><td>PUBLIC</td><td>🔐-verifizierung</td><td>Text, read-only außer Bot</td><td>einziger Kanal vor Verifizierung</td><td>Verifizierungs-Button (<code>verificationService</code>)</td><td><span class="pill ok">✅</span></td></tr>
+    <tr><td>VERIFIED</td><td>👋-willkommen</td><td>Text, read-only</td><td>Startpunkt nach Abschluss (Nachschlage-Info)</td><td>—</td><td><span class="pill ok">✅ Kanal</span> <span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>📜-regeln</td><td>Text, read-only</td><td>aktuelles Regelwerk</td><td><code>ruleService.ts</code>, <code>/regeln</code></td><td><span class="pill ok">✅</span></td></tr>
+    <tr><td>VERIFIED</td><td>🧑‍💻-onboarding</td><td>Text, read-only</td><td>Nachschlagen, eigentlicher Flow läuft per DM</td><td><code>onboardingService.ts</code></td><td><span class="pill ok">✅</span></td></tr>
+    <tr><td>VERIFIED</td><td>🧭-wo-bin-ich</td><td>Text, read-only</td><td>dauerhafte Klassenübersicht/-auswahl</td><td><code>classService.ts</code>, <code>classMessage.ts</code></td><td><span class="pill ok">✅</span></td></tr>
+
+    <tr><td rowspan="5"><strong>02 · ZENTRALE</strong></td><td>VERIFIED</td><td>📢-ankündigungen</td><td>Text, read-only</td><td>zentrale Ankündigungen</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>📌-wichtige-informationen</td><td>Text, read-only</td><td>dauerhaft relevante Infos</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>📅-termine</td><td>Text, read-only</td><td>zentrale Termine/Fristen</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>🗓️-ausbildungsplan</td><td>Text, read-only</td><td>Ausbildungsplan/aktueller Kurs</td><td>Kursplan-Nachrichten (Klasse A, indirekt über Klassenbereich)</td><td><span class="pill warn">⚠️ teilweise</span></td></tr>
+    <tr><td>VERIFIED</td><td>🧭-heute</td><td>Text, read-only</td><td>Tagesübersicht</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+
+    <tr><td rowspan="6"><strong>03 · LERNEN</strong></td><td>VERIFIED</td><td>🎛️-lern-cockpit</td><td>Text, read-only</td><td>persönlicher Lernstatus</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>📚-kursinhalte</td><td>Text, read-only</td><td>592 strukturierte Kursinhalte</td><td><code>courseContentService.ts</code>, <code>/kursinhalte</code></td><td><span class="pill ok">✅</span></td></tr>
+    <tr><td>VERIFIED</td><td>📖-lernmaterial</td><td>Text, read-only</td><td>kuratiertes Material (global)</td><td>— (echtes Lernmaterial ist klassenbezogen, s. Klassenbereiche)</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>❓-fragen-und-antworten</td><td>Text, schreibbar</td><td>fachliche Q&amp;A</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>🧪-selbsttests</td><td>Text, read-only</td><td>Selbsttests/Ergebnisse</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>📈-lernfortschritt</td><td>Text, read-only</td><td>persönlicher Lernfortschritt</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+
+    <tr><td rowspan="4"><strong>04 · PRÜFUNG</strong></td><td>VERIFIED</td><td>🎓-prüfungs-cockpit</td><td>Text, read-only</td><td>Prüfungsübersicht/Fristen</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>📝-prüfungen</td><td>Text, read-only</td><td>globale Prüfungsübersicht</td><td>— (echte Prüfungsverwaltung ist klassenbezogen, s. Klassenbereiche)</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>🎯-prüfungsvorbereitung</td><td>Text, schreibbar</td><td>gemeinsame Vorbereitung</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>🔎-prüfungsfragen</td><td>Text, schreibbar</td><td>Fragen/Diskussion</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+
+    <tr><td rowspan="4"><strong>05 · ZUSAMMENARBEIT</strong></td><td>VERIFIED</td><td>👥-lerngruppen</td><td>Text, schreibbar</td><td>Lerngruppen bilden</td><td><code>studyGroupService.ts</code></td><td><span class="pill ok">✅</span></td></tr>
+    <tr><td>VERIFIED</td><td>🆘-hilfe-gesucht</td><td>Text, schreibbar</td><td>Hilfe bei Aufgaben</td><td>— (bewusst ohne Ticket-Logik, s. ARCHITECTURE.md)</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>🛠️-projekte</td><td>Text, schreibbar</td><td>gemeinsame Projekte</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>💬-austausch</td><td>Text, schreibbar</td><td>offener Austausch</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+
+    <tr><td rowspan="2"><strong>06 · ORGANISATION</strong></td><td>VERIFIED</td><td>📝-berichtsheft</td><td>Text, schreibbar</td><td>globale Berichtsheft-Info</td><td>— (echte Berichte sind klassenbezogen, s. Klassenbereiche)</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>VERIFIED</td><td>📋-organisation</td><td>Text, schreibbar</td><td>organisatorischer Austausch</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+
+    <tr><td rowspan="2"><strong>07 · LERNRÄUME</strong></td><td>VERIFIED</td><td>🔊-lernlounge</td><td>Voice</td><td>freier Sprachraum</td><td>—</td><td><span class="pill ok">✅ Kanal</span></td></tr>
+    <tr><td>VERIFIED</td><td>🔊-prüfungsvorbereitung</td><td>Voice</td><td>gemeinsames Lernen für Prüfungen</td><td>—</td><td><span class="pill ok">✅ Kanal</span></td></tr>
+
+    <tr><td rowspan="3"><strong>08 · INTERN</strong></td><td>STAFF</td><td>📋-bot-log</td><td>Text, read-only für Staff</td><td>Bot-/Audit-Ausgaben</td><td>Landeplatz für Hilfe-Anfragen (<code>classService.requestClassHelp()</code>)</td><td><span class="pill ok">✅</span></td></tr>
+    <tr><td>STAFF</td><td>🛡️-moderation</td><td>Text, schreibbar für Staff</td><td>interne Moderation</td><td>— (keine Moderationslogik implementiert)</td><td><span class="pill bad">❌ Logik</span></td></tr>
+    <tr><td>STAFF</td><td>⚙️-verwaltung</td><td>Text, schreibbar für Staff</td><td>interne Serververwaltung</td><td>—</td><td><span class="pill bad">❌ Logik</span></td></tr>
+
+    <tr><td><strong>(außerhalb jeder Kategorie, Position 0)</strong></td><td>eigene Overwrites (Rolle „Verifiziert")</td><td>🏫-schulhof</td><td>Text, schreibbar</td><td>klassenübergreifender freier Talk für alle Verifizierten</td><td>—</td><td><span class="pill ok">✅ Code</span> <span class="pill bad">❌ Discord (fehlt aktuell live)</span></td></tr>
+  </table>
+</section>
+
+<section id="klassenbereiche">
+  <h2>Klassenbereiche A / B / C</h2>
+  <p class="note">Quelle: <code>classAreaService.ts</code>. Für jede Klasse eine eigene, private Kategorie „Klasse X" mit identischem Kanalaufbau. Zugriff ausschließlich über die jeweilige Klassenrolle — die Rolle „Mitglied" hat <strong>keinen</strong> eigenen Overwrite hier.</p>
+  <table>
+    <tr><th>Kanal</th><th>Typ</th><th>Zweck</th><th>Klassenmitglied</th><th>Klassenleitung</th><th>Admin/Moderator</th><th>Bot-Funktion</th></tr>
+    <tr><td>💬-klassenchat</td><td>Text</td><td>klassenweiter Chat</td><td class="matrix"><span class="pill ok">lesen+schreiben</span></td><td>lesen+schreiben+moderieren</td><td>voll</td><td>—</td></tr>
+    <tr><td>📢-ankündigungen</td><td>Text</td><td>Ankündigungen der Klassenleitung</td><td><span class="pill warn">nur lesen</span></td><td>lesen+schreiben</td><td>voll</td><td>—</td></tr>
+    <tr><td>📅-termine</td><td>Text</td><td>Termine der Klasse</td><td><span class="pill warn">nur lesen</span></td><td>verwalten</td><td>voll</td><td><code>appointmentService.ts</code></td></tr>
+    <tr><td>🎓-prüfungen</td><td>Text</td><td>Prüfungen der Klasse</td><td><span class="pill warn">nur lesen</span></td><td>verwalten</td><td>voll</td><td><code>examService.ts</code></td></tr>
+    <tr><td>📝-berichtsheft</td><td>Text</td><td>Tages-/Wochenberichte</td><td><span class="pill warn">nur lesen</span> (eigene Berichte über Commands)</td><td>verwalten/einsehen</td><td>voll</td><td><code>dailyReportService.ts</code>, <code>weeklyReportService.ts</code></td></tr>
+    <tr><td>📚-lernmaterial</td><td>Text</td><td>klassenbezogenes Material</td><td><span class="pill warn">nur lesen</span></td><td>verwalten</td><td>voll</td><td><code>learningMaterialService.ts</code></td></tr>
+    <tr><td>🔊-sprachkanal</td><td>Voice</td><td>Klassen-Voice, Basis für Lerngruppen</td><td>connect+speak</td><td>connect+speak+moderieren (mute/deafen/move)</td><td>voll</td><td><code>studyGroupService.ts</code></td></tr>
+  </table>
+  <p class="note">„Klassenmitglied"-Rechte gelten ausschließlich für Inhaber der jeweils <strong>eigenen</strong> Klassenrolle (Klasse A sieht nur den Klasse-A-Bereich usw.). „nur lesen" gilt für den Kanal selbst — inhaltliche Aktionen (Kenntnisnahme, eigenen Bericht einreichen) laufen über Slash-Commands mit serverseitiger <code>assertClassReadAccess()</code>-Prüfung, nicht über Schreibrechte im Kanal.</p>
+</section>
+
+<section id="matrix">
+  <h2>Permission-Matrix</h2>
+  <p class="note">✅ = voller Zugriff (lesen+schreiben) · 👁️ = nur lesen · ❌ = kein Zugriff · — = nicht zutreffend. Aus <code>globalServerStructureService.buildOverwrites()</code> und <code>classAreaService.buildOverwrites()</code> abgeleitet, nicht geraten.</p>
+  <table class="matrix">
+    <tr><th>Bereich</th><th>@everyone</th><th>Verifiziert</th><th>Mitglied</th><th>Klasse A</th><th>Klasse B</th><th>Klasse C</th><th>Klassenleitung</th><th>Moderator</th><th>Admin</th></tr>
+    <tr><td>🔐 Verifizierung</td><td class="yes">✅</td><td class="yes">✅</td><td class="yes">✅</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="yes">✅</td><td class="yes">✅</td></tr>
+    <tr><td>🏫 Schulhof</td><td class="no">❌</td><td class="yes">✅</td><td class="yes">✅ (via Verifiziert)</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="no">❌ (kein Overwrite!)</td><td class="yes">✅</td></tr>
+    <tr><td>01·START (übrige)</td><td class="no">❌</td><td class="no">❌</td><td class="read">👁️</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="yes">✅</td><td class="yes">✅</td></tr>
+    <tr><td>02–07 (VERIFIED, gemischt read-only/schreibbar je Kanal)</td><td class="no">❌</td><td class="no">❌</td><td class="read">👁️/✅ je Kanal</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="yes">✅</td><td class="yes">✅</td></tr>
+    <tr><td>08·INTERN</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="na">—</td><td class="yes">✅</td><td class="yes">✅</td></tr>
+    <tr><td>Klassenbereich A</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="read">✅/👁️ je Kanal</td><td class="no">❌</td><td class="no">❌</td><td class="yes">✅ (nur Klassenleitung A)</td><td class="yes">✅</td><td class="yes">✅</td></tr>
+    <tr><td>Klassenbereich B</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="read">✅/👁️ je Kanal</td><td class="no">❌</td><td class="yes">✅ (nur Klassenleitung B)</td><td class="yes">✅</td><td class="yes">✅</td></tr>
+    <tr><td>Klassenbereich C</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="read">✅/👁️ je Kanal</td><td class="yes">✅ (nur Klassenleitung C)</td><td class="yes">✅</td><td class="yes">✅</td></tr>
+  </table>
+  <p class="note"><strong>Auffälligkeit:</strong> Moderator hat in <code>buildSchulhofChannelOverwrites()</code> keinen expliziten Allow-Overwrite (nur <code>everyone</code>-Deny, <code>verifiedRoleId</code>, <code>adminRoleId</code>, Bot) — anders als bei allen übrigen Kategorien, wo Moderator konsistent Staff-Rechte erhält. Möglicherweise unbeabsichtigt, hier als reine Beobachtung dokumentiert (keine Änderung vorgenommen).</p>
+</section>
+
+<section id="abweichungen">
+  <h2>Bekannte Abweichungen &amp; offene Punkte</h2>
+  <div class="card">
+    <ol>
+      <li><strong>Klassenrolle zu früh vergeben</strong> — Zugriff auf Klassenbereich bereits ab Klassenbestätigung (Schritt 6), nicht erst nach „Mitglied" (Schritt 9).</li>
+      <li><strong>🏫 Schulhof fehlt auf dem realen Zielserver</strong> trotz korrektem Code — vermutlich veralteter Bot-Deploy-Stand beim letzten <code>/setup-server</code>-Lauf.</li>
+      <li><strong>Moderator ohne Schulhof-Zugriff</strong> (s. Matrix-Hinweis oben) — Beobachtung, nicht verifiziert ob beabsichtigt.</li>
+      <li><strong>Kursplan nur für Klasse A</strong> mit echten Terminplan-Daten; B/C strukturell vorbereitet, ohne Datenquelle.</li>
+      <li><strong>Viele globale Kanäle ohne Bot-Logik</strong> (s. Tabelle „❌ Logik") — strukturell korrekt angelegt und berechtigt, aber funktional leer.</li>
+      <li><strong>Keine Verknüpfung</strong> zwischen IHK-Themenanalyse, Kursinhalten und einem „Lernfokus"-Feature (Kernstück der Produktvision, noch nicht gebaut).</li>
+    </ol>
+    <p class="note">Details und Quellenangaben je Punkt: siehe <code>PROJECT_HANDOVER.md</code>, Abschnitte 6, 26–28.</p>
+  </div>
+</section>
+
+</main>
+<footer>COMCAVE Discord Bot — generiert aus dem tatsächlichen Repository-Code (Commit b4f6b72). Kein Ersatz für eine Live-Prüfung des Discord-Servers.</footer>
+</body>
+</html>

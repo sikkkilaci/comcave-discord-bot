@@ -1,0 +1,711 @@
+{
+  "stufe1_fisi_historisch": {
+    "label": "Stufe 1: FISI historische Gesamtbetrachtung 1999-2024",
+    "n_documents": 65,
+    "years_covered": [
+      1999,
+      2002,
+      2011,
+      2012,
+      2013,
+      2014,
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2021,
+      2022
+    ],
+    "topics": {
+      "Netzwerktechnik / TCP-IP / Subnetting": {
+        "documents_matching": 53,
+        "coverage_by_period": {
+          "1999-2005": "3/3",
+          "2011-2015": "32/43",
+          "2016-2020": "7/8",
+          "2021-2024 (AO2020)": "9/9",
+          "unbekannt": "2/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2016 - 1 - Wi - Lösungen.pdf",
+          "FISI 1999 bis 2021/1197 - 2012 - 1 - Wi - Aufgaben (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Aufgaben (2).pdf"
+        ]
+      },
+      "WLAN / Funknetz": {
+        "documents_matching": 20,
+        "coverage_by_period": {
+          "1999-2005": "1/3",
+          "2011-2015": "14/43",
+          "2016-2020": "1/8",
+          "2021-2024 (AO2020)": "3/9",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2012 - 1 - Wi - Aufgaben (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Aufgaben (2).pdf",
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Lösungen.pdf"
+        ]
+      },
+      "Active Directory / Benutzer- und Rechteverwaltung": {
+        "documents_matching": 24,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "16/43",
+          "2016-2020": "4/8",
+          "2021-2024 (AO2020)": "3/9",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2016 - 1 - Wi - Lösungen.pdf",
+          "FISI 1999 bis 2021/1197 - 2012 - 1 - Wi - Aufgaben (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Aufgaben (2).pdf"
+        ]
+      },
+      "Virtualisierung": {
+        "documents_matching": 12,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "11/43",
+          "2016-2020": "1/8",
+          "2021-2024 (AO2020)": "0/9",
+          "unbekannt": "0/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2012 - 1 - Wi - Aufgaben (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2011 - 2 - So - Lösungen - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "FISI 1999 bis 2021/1197 - 2014 - 1 - So - Aufgaben (5).pdf"
+        ]
+      },
+      "Datensicherung / Storage / RAID": {
+        "documents_matching": 36,
+        "coverage_by_period": {
+          "1999-2005": "1/3",
+          "2011-2015": "21/43",
+          "2016-2020": "6/8",
+          "2021-2024 (AO2020)": "7/9",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2016 - 1 - Wi - Lösungen.pdf",
+          "FISI 1999 bis 2021/1197 - 2012 - 1 - Wi - Aufgaben (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Aufgaben (2).pdf"
+        ]
+      },
+      "IT-Sicherheit / Firewall / Verschlüsselung": {
+        "documents_matching": 41,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "23/43",
+          "2016-2020": "7/8",
+          "2021-2024 (AO2020)": "9/9",
+          "unbekannt": "2/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2016 - 1 - Wi - Lösungen.pdf",
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Aufgaben (2).pdf",
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Lösungen.pdf"
+        ]
+      },
+      "Datenschutz": {
+        "documents_matching": 14,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "6/43",
+          "2016-2020": "3/8",
+          "2021-2024 (AO2020)": "4/9",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Aufgaben (2).pdf",
+          "FISI 1999 bis 2021/1197 - 2011 - 3 - Wi - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "FISI 1999 bis 2021/1197 - 2019 - 2 - So - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf"
+        ]
+      },
+      "Skripting / Automatisierung": {
+        "documents_matching": 8,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "2/43",
+          "2016-2020": "2/8",
+          "2021-2024 (AO2020)": "4/9",
+          "unbekannt": "0/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2015 - 2 - So - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "FISI 1999 bis 2021/1197 - 2018 - 1 - So - Lösungen.pdf",
+          "FISI 1999 bis 2021/1197 - 2021 - 2 - So - Lösungen.pdf"
+        ]
+      },
+      "Cloud Computing": {
+        "documents_matching": 8,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "1/43",
+          "2016-2020": "2/8",
+          "2021-2024 (AO2020)": "4/9",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2019 - 2 - So - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "FISI 1999 bis 2021/1197 - 2019 - 1 - So - Lösungen.pdf",
+          "FISI 1999 bis 2021/1197 - 2012 - 2 - So - Lösungen.pdf"
+        ]
+      },
+      "Projektmanagement / Wirtschaftlichkeit": {
+        "documents_matching": 30,
+        "coverage_by_period": {
+          "1999-2005": "2/3",
+          "2011-2015": "27/43",
+          "2016-2020": "1/8",
+          "2021-2024 (AO2020)": "0/9",
+          "unbekannt": "0/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2011 - 3 - So - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "FISI 1999 bis 2021/1197 - 2013 - 3 - Wi - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450 (2).pdf",
+          "FISI 1999 bis 2021/1197 - 2011 - 2 - So - Lösungen - 1190 - 1196 - 1197 - 6440 - 6450.pdf"
+        ]
+      },
+      "ITIL / Service-Prozesse": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "1/43",
+          "2016-2020": "0/8",
+          "2021-2024 (AO2020)": "1/9",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2012 - 1 - Wi - Aufgaben (3).pdf",
+          "Fachinformatiker_Systemintegration_Konzeption_und_Administration_von_IT-Systemen_ungeb_1.pdf",
+          "2021-So FISY Lösungserläuerungen (komplett).pdf"
+        ]
+      },
+      "Green IT / Energieeffizienz": {
+        "documents_matching": 5,
+        "coverage_by_period": {
+          "1999-2005": "1/3",
+          "2011-2015": "3/43",
+          "2016-2020": "1/8",
+          "2021-2024 (AO2020)": "0/9",
+          "unbekannt": "0/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2012 - 1 - Wi - Aufgaben (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2014 - 2 - So - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450 (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2019 - 1 - Wi - Lösungen.pdf"
+        ]
+      },
+      "DNS / DHCP": {
+        "documents_matching": 35,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "26/43",
+          "2016-2020": "3/8",
+          "2021-2024 (AO2020)": "5/9",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2016 - 1 - Wi - Lösungen.pdf",
+          "FISI 1999 bis 2021/1197 - 2012 - 1 - Wi - Aufgaben (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Aufgaben (2).pdf"
+        ]
+      },
+      "E-Mail- und Kommunikationsdienste": {
+        "documents_matching": 5,
+        "coverage_by_period": {
+          "1999-2005": "0/3",
+          "2011-2015": "5/43",
+          "2016-2020": "0/8",
+          "2021-2024 (AO2020)": "0/9",
+          "unbekannt": "0/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2013 - 1 - So - Lösungen (5).pdf",
+          "FISI 1999 bis 2021/1197 - 2013 - 1 - Wi - Lösungen (2).pdf",
+          "FISI 1999 bis 2021/1197 - 2013 - 1 - Wi - Aufgaben.pdf"
+        ]
+      },
+      "Datenbanken (Grundlagen)": {
+        "documents_matching": 27,
+        "coverage_by_period": {
+          "1999-2005": "1/3",
+          "2011-2015": "19/43",
+          "2016-2020": "2/8",
+          "2021-2024 (AO2020)": "5/9",
+          "unbekannt": "0/2"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2015 - 1 - So - Aufgaben (2).pdf",
+          "FISI 1999 bis 2021/1197 - 2014 - 2 - So - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450 (3).pdf",
+          "FISI 1999 bis 2021/1197 - 2014 - 2 - So - Lösungen - 1190 - 1196 - 1197 - 6440 - 6450 (4).pdf"
+        ]
+      }
+    }
+  },
+  "stufe2_fisi_ao2020": {
+    "label": "Stufe 2: FISI AO2020 Detailanalyse",
+    "n_documents": 9,
+    "years_covered": [
+      2021,
+      2022
+    ],
+    "topics": {
+      "Netzwerktechnik / TCP-IP / Subnetting": {
+        "documents_matching": 9,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "7/7",
+          "unbekannt": "2/2"
+        },
+        "example_files": [
+          "Fachinformatiker_Systemintegration_Konzeption_und_Administration_von_IT-Systemen_ungeb_1.pdf",
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-So FISY Aufgaben.pdf"
+        ]
+      },
+      "WLAN / Funknetz": {
+        "documents_matching": 4,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "3/7",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-So FISY Aufgaben.pdf",
+          "Fachinformatiker_Systemintegration_Analyse_und_Entwicklung_von_Netzwerken_ungeb_1.pdf"
+        ]
+      },
+      "Active Directory / Benutzer- und Rechteverwaltung": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "2/7",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "Fachinformatiker_Systemintegration_Konzeption_und_Administration_von_IT-Systemen_ungeb_1.pdf",
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-WI FISY Aufgaben.pdf"
+        ]
+      },
+      "Virtualisierung": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/7",
+          "unbekannt": "0/2"
+        },
+        "example_files": []
+      },
+      "Datensicherung / Storage / RAID": {
+        "documents_matching": 6,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "5/7",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "Fachinformatiker_Systemintegration_Konzeption_und_Administration_von_IT-Systemen_ungeb_1.pdf",
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-So FISY Aufgaben.pdf"
+        ]
+      },
+      "IT-Sicherheit / Firewall / Verschlüsselung": {
+        "documents_matching": 9,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "7/7",
+          "unbekannt": "2/2"
+        },
+        "example_files": [
+          "Fachinformatiker_Systemintegration_Konzeption_und_Administration_von_IT-Systemen_ungeb_1.pdf",
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-So FISY Aufgaben.pdf"
+        ]
+      },
+      "Datenschutz": {
+        "documents_matching": 5,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "4/7",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "Fachinformatiker_Systemintegration_Konzeption_und_Administration_von_IT-Systemen_ungeb_1.pdf",
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-WI FISY Aufgaben.pdf"
+        ]
+      },
+      "Skripting / Automatisierung": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "3/7",
+          "unbekannt": "0/2"
+        },
+        "example_files": [
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-So FISY Aufgaben.pdf",
+          "2021-WI FISY Aufgaben.pdf"
+        ]
+      },
+      "Cloud Computing": {
+        "documents_matching": 5,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "4/7",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "Fachinformatiker_Systemintegration_Konzeption_und_Administration_von_IT-Systemen_ungeb_1.pdf",
+          "2021-So FISY Aufgaben.pdf",
+          "2021-WI FISY Aufgaben.pdf"
+        ]
+      },
+      "Projektmanagement / Wirtschaftlichkeit": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/7",
+          "unbekannt": "0/2"
+        },
+        "example_files": []
+      },
+      "ITIL / Service-Prozesse": {
+        "documents_matching": 2,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "1/7",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "Fachinformatiker_Systemintegration_Konzeption_und_Administration_von_IT-Systemen_ungeb_1.pdf",
+          "2021-So FISY Lösungserläuerungen (komplett).pdf"
+        ]
+      },
+      "Green IT / Energieeffizienz": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/7",
+          "unbekannt": "0/2"
+        },
+        "example_files": []
+      },
+      "DNS / DHCP": {
+        "documents_matching": 5,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "4/7",
+          "unbekannt": "1/2"
+        },
+        "example_files": [
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-So FISY Aufgaben.pdf",
+          "Fachinformatiker_Systemintegration_Analyse_und_Entwicklung_von_Netzwerken_ungeb_1.pdf"
+        ]
+      },
+      "E-Mail- und Kommunikationsdienste": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/7",
+          "unbekannt": "0/2"
+        },
+        "example_files": []
+      },
+      "Datenbanken (Grundlagen)": {
+        "documents_matching": 4,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "4/7",
+          "unbekannt": "0/2"
+        },
+        "example_files": [
+          "2021-So FISY Lösungserläuerungen (komplett).pdf",
+          "2021-WI FISY Aufgaben.pdf",
+          "2022_Winter_AP2_FISI_AO2020_1_Loesung.pdf"
+        ]
+      }
+    }
+  },
+  "stufe2_fiae_ao2020": {
+    "label": "Stufe 2: FIAE AO2020 Detailanalyse",
+    "n_documents": 4,
+    "years_covered": [
+      2021
+    ],
+    "topics": {
+      "Programmierung Grundlagen": {
+        "documents_matching": 4,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "4/4"
+        },
+        "example_files": [
+          "2021-So FIAE Lösungserläuerungen (komplett).pdf",
+          "2021-WI FIAE Anlagen.pdf",
+          "2021-WI FIAE Aufgaben.pdf"
+        ]
+      },
+      "Objektorientierte Programmierung": {
+        "documents_matching": 4,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "4/4"
+        },
+        "example_files": [
+          "2021-So FIAE Lösungserläuerungen (komplett).pdf",
+          "2021-WI FIAE Anlagen.pdf",
+          "2021-WI FIAE Aufgaben.pdf"
+        ]
+      },
+      "Datenbanken / SQL": {
+        "documents_matching": 4,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "4/4"
+        },
+        "example_files": [
+          "2021-So FIAE Lösungserläuerungen (komplett).pdf",
+          "2021-WI FIAE Anlagen.pdf",
+          "2021-WI FIAE Aufgaben.pdf"
+        ]
+      },
+      "Softwareentwicklungsprozess / Vorgehensmodelle": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "3/4"
+        },
+        "example_files": [
+          "2021-So FIAE Lösungserläuerungen (komplett).pdf",
+          "2021-WI FIAE Aufgaben.pdf",
+          "2021-So FIAE Aufgaben.pdf"
+        ]
+      },
+      "Testverfahren / Qualitätssicherung": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/4"
+        },
+        "example_files": []
+      },
+      "Versionierung": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/4"
+        },
+        "example_files": []
+      },
+      "Webentwicklung / Schnittstellen": {
+        "documents_matching": 2,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "2/4"
+        },
+        "example_files": [
+          "2021-WI FIAE Anlagen.pdf",
+          "2021-So FIAE Aufgaben.pdf"
+        ]
+      },
+      "Projektmanagement / Wirtschaftlichkeit": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/4"
+        },
+        "example_files": []
+      },
+      "IT-Sicherheit": {
+        "documents_matching": 1,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "1/4"
+        },
+        "example_files": [
+          "2021-So FIAE Lösungserläuerungen (komplett).pdf"
+        ]
+      },
+      "Datenschutz": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/4"
+        },
+        "example_files": []
+      }
+    }
+  },
+  "stufe2_wiso": {
+    "label": "Stufe 2: WISO (getrennt behandelt)",
+    "n_documents": 16,
+    "years_covered": [
+      2007,
+      2011,
+      2012,
+      2013,
+      2015,
+      2016,
+      2018,
+      2020,
+      2021,
+      2022
+    ],
+    "topics": {
+      "Berufsausbildung / Ausbildungsvertrag": {
+        "documents_matching": 2,
+        "coverage_by_period": {
+          "2006-2010": "0/1",
+          "2011-2015": "1/4",
+          "2016-2020": "0/3",
+          "2021-2024 (AO2020)": "1/8"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2013 - 3 - Wi - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "2021-WI WISO Aufgaben.pdf"
+        ]
+      },
+      "Arbeitsrecht / Kündigung": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2006-2010": "0/1",
+          "2011-2015": "1/4",
+          "2016-2020": "0/3",
+          "2021-2024 (AO2020)": "2/8"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2013 - 3 - Wi - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "2021-WI WISO Aufgaben.pdf",
+          "2021-So WISO Aufgaben.pdf"
+        ]
+      },
+      "Mitbestimmung": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2006-2010": "0/1",
+          "2011-2015": "1/4",
+          "2016-2020": "0/3",
+          "2021-2024 (AO2020)": "2/8"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2013 - 3 - Wi - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "2021-WI WISO Aufgaben.pdf",
+          "2021-So WISO Aufgaben.pdf"
+        ]
+      },
+      "Sozialversicherung": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2006-2010": "0/1",
+          "2011-2015": "1/4",
+          "2016-2020": "0/3",
+          "2021-2024 (AO2020)": "2/8"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2013 - 3 - Wi - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "2021-WI WISO Aufgaben.pdf",
+          "2021-So WISO Aufgaben.pdf"
+        ]
+      },
+      "Wirtschaftskreislauf / Marktformen": {
+        "documents_matching": 2,
+        "coverage_by_period": {
+          "2006-2010": "0/1",
+          "2011-2015": "0/4",
+          "2016-2020": "0/3",
+          "2021-2024 (AO2020)": "2/8"
+        },
+        "example_files": [
+          "2021-WI WISO Aufgaben.pdf",
+          "2021-So WISO Aufgaben.pdf"
+        ]
+      },
+      "Unternehmensformen": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2006-2010": "0/1",
+          "2011-2015": "1/4",
+          "2016-2020": "0/3",
+          "2021-2024 (AO2020)": "2/8"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2013 - 3 - Wi - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "2021-WI WISO Aufgaben.pdf",
+          "2021-So WISO Aufgaben.pdf"
+        ]
+      },
+      "Steuern": {
+        "documents_matching": 2,
+        "coverage_by_period": {
+          "2006-2010": "0/1",
+          "2011-2015": "0/4",
+          "2016-2020": "0/3",
+          "2021-2024 (AO2020)": "2/8"
+        },
+        "example_files": [
+          "2021-WI WISO Aufgaben.pdf",
+          "2021-So WISO Aufgaben.pdf"
+        ]
+      },
+      "Lohn / Gehalt": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2006-2010": "0/1",
+          "2011-2015": "1/4",
+          "2016-2020": "0/3",
+          "2021-2024 (AO2020)": "2/8"
+        },
+        "example_files": [
+          "FISI 1999 bis 2021/1197 - 2013 - 3 - Wi - Aufgaben - 1190 - 1196 - 1197 - 6440 - 6450.pdf",
+          "2021-WI WISO Aufgaben.pdf",
+          "2021-So WISO Aufgaben.pdf"
+        ]
+      }
+    }
+  },
+  "stufe2_kernqualifikationen": {
+    "label": "Stufe 2: Kernqualifikationen gemeinsam (AP1 IT-Berufe)",
+    "n_documents": 4,
+    "years_covered": [
+      2021,
+      2024
+    ],
+    "topics": {
+      "Netzwerktechnik (gemeinsame Grundlagen)": {
+        "documents_matching": 3,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "3/3",
+          "unbekannt": "0/1"
+        },
+        "example_files": [
+          "2021-WI KQ Aufgaben.pdf",
+          "AP1_2024_Losung.pdf",
+          "2021-So KQ Aufgaben.pdf"
+        ]
+      },
+      "Projektmanagement / Wirtschaftlichkeit (gemeinsam)": {
+        "documents_matching": 2,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "1/3",
+          "unbekannt": "1/1"
+        },
+        "example_files": [
+          "IT-BER1-1.pdf",
+          "2021-WI KQ Aufgaben.pdf"
+        ]
+      },
+      "IT-Sicherheit / Datenschutz (gemeinsam)": {
+        "documents_matching": 4,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "3/3",
+          "unbekannt": "1/1"
+        },
+        "example_files": [
+          "IT-BER1-1.pdf",
+          "2021-WI KQ Aufgaben.pdf",
+          "AP1_2024_Losung.pdf"
+        ]
+      },
+      "Datenbanken (gemeinsame Grundlagen)": {
+        "documents_matching": 1,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "1/3",
+          "unbekannt": "0/1"
+        },
+        "example_files": [
+          "2021-WI KQ Aufgaben.pdf"
+        ]
+      },
+      "Rechtliche Grundlagen": {
+        "documents_matching": 0,
+        "coverage_by_period": {
+          "2021-2024 (AO2020)": "0/3",
+          "unbekannt": "0/1"
+        },
+        "example_files": []
+      }
+    }
+  }
+}
