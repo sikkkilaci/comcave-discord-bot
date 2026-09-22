@@ -126,11 +126,6 @@ Katalog - unbedenklich).
   Befehl ist vollstaendig idempotent: ein erneuter Lauf legt nichts doppelt
   an, aktualisiert aber Berechtigungen, Kategorienamen (z. B. bei neu
   erkannter Klausur) und den Inhalt der bereits geposteten Nachricht.
-- **Bekannte Luecke:** Der Kurs "Vorbereitung auf eine medieninformations-
-  technische Umschulung" (17.04.2026 - 19.06.2026) ist bisher NICHT Teil von
-  `kursinhalte.json` und erscheint daher weder im Katalog noch unter den
-  Kurs-Kategorien - er muesste zuerst analog zu den anderen 34 Kursen
-  strukturiert erfasst und importiert werden.
 
 ### Keine personenbezogenen Daten
 
