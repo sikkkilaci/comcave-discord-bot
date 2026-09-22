@@ -177,6 +177,7 @@ model Class {
   reportChannelId       String? // Berichtsheft / Tagesberichte
   materialChannelId     String? // Lernmaterial
   voiceChannelId        String? // Klassen-Sprachkanal
+  coursePlanChannelId   String? // Kursplan (chronologische Kurs-Slots + Kursinhalte, siehe classCoursePlanService.ts)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

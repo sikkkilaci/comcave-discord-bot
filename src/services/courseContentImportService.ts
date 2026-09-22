@@ -9,7 +9,6 @@ import {
 import { logAuditEvent } from '../repositories/auditLogRepository.js';
 import { isServerAdmin } from '../permissions/checkPermission.js';
 import { ValidationError, PermissionError } from '../utils/errors.js';
-import { parseGermanDate } from '../utils/dateTime.js';
 import type { GuildConfig } from '@prisma/client';
 import type { GuildMember } from 'discord.js';
 
@@ -151,82 +150,6 @@ export function parseCourseContentSource(fileContent: string): ParsedCourseWithC
     courseTitle: course.title,
     items: reconstructCourseContentHierarchy(course.contentItems),
   }));
-}
-
-const courseScheduleSourceSchema = z.object({
-  courses: z.array(
-    z.object({
-      courseId: z.string().trim().min(1, 'courseId darf nicht leer sein.'),
-      title: z.string().trim().min(1, 'title darf nicht leer sein.'),
-      start: z.string().trim().min(1, 'start darf nicht leer sein.'),
-      end: z.string().trim().min(1, 'end darf nicht leer sein.'),
-    }),
-  ),
-});
-
-export interface CourseScheduleEntry {
-  courseNumber: string;
-  courseTitle: string;
-  start: Date;
-  end: Date;
-}
-
-/**
- * Liest Kursnummer/-titel und Start-/Enddatum aller Kurse aus derselben
- * Quelldatei wie parseCourseContentSource() - bewusst eine EIGENE, kleinere
- * Schema-Definition statt courseContentSourceSchema zu erweitern, da
- * Start-/Enddatum laut data/course-plans/README.md bewusst NICHT importiert/
- * gespeichert werden (siehe dort, Abschnitt "Datenmodell") und dieser reine
- * Lese-Pfad daran nichts aendert: er liest die Termine bei jedem Aufruf frisch
- * aus der versionierten Quelldatei, statt eine zweite, potenziell abweichende
- * Datumsquelle in der DB anzulegen (Grundlage fuer courseCategoryService.ts).
- */
-export function parseCourseSchedule(fileContent: string): CourseScheduleEntry[] {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(fileContent);
-  } catch {
-    throw new ValidationError(
-      'Kursinhalte-Quelldatei ist kein gueltiges JSON - Import abgebrochen.',
-    );
-  }
-
-  const result = courseScheduleSourceSchema.safeParse(raw);
-  if (!result.success) {
-    throw new ValidationError(
-      'Kursinhalte-Quelldatei entspricht nicht dem erwarteten Format ' +
-        '(Objekt mit "courses": [{courseId, title, start, end}]) - Import abgebrochen.',
-    );
-  }
-
-  return result.data.courses.map((course) => {
-    try {
-      return {
-        courseNumber: course.courseId,
-        courseTitle: course.title,
-        start: parseGermanDate(course.start),
-        end: parseGermanDate(course.end),
-      };
-    } catch (error) {
-      if (error instanceof ValidationError) {
-        throw new ValidationError(`Kurs "${course.courseId}" (${course.title}): ${error.message}`);
-      }
-      throw error;
-    }
-  });
-}
-
-/** Wie parseCourseSchedule(), aber liest die Quelldatei direkt von der Platte. */
-export async function loadCourseSchedule(
-  sourceFile: string = DEFAULT_COURSE_CONTENT_SOURCE_FILE,
-): Promise<CourseScheduleEntry[]> {
-  let fileContent: string;
-  try {
-    fileContent = await readFile(resolveSourceFilePath(sourceFile), 'utf-8');
-  } catch {
-    throw new ValidationError(`Kursinhalte-Quelldatei "${sourceFile}" wurde nicht gefunden.`);
-  }
-  return parseCourseSchedule(fileContent);
 }
 
 export interface CourseContentImportSummary {

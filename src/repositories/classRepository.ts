@@ -67,6 +67,7 @@ export type ClassChannelUpdate = Partial<
     | 'reportChannelId'
     | 'materialChannelId'
     | 'voiceChannelId'
+    | 'coursePlanChannelId'
   >
 >;
 

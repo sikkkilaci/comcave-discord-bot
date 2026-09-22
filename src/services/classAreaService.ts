@@ -46,12 +46,13 @@ interface ChannelBlueprint {
 }
 
 /**
- * Die sieben Kanaele eines privaten Klassenbereichs. Bewusst als feste,
+ * Die acht Kanaele eines privaten Klassenbereichs. Bewusst als feste,
  * deklarative Liste statt konfigurierbar - deckt die in der Anforderung
  * genannten Bereiche ab (Klassenchat, Ankuendigungen, Termine, Pruefungen,
- * Berichtsheft/Tagesberichte, Lernmaterial, Sprachkanal). Nur "Ankuendigungen"
- * ist eindeutig als Einweg-Kanal zu verstehen (read-only fuer die Klasse);
- * alle anderen bleiben voll beschreibbar, da z. B. das Berichtsheft von den
+ * Berichtsheft/Tagesberichte, Lernmaterial, Kursplan, Sprachkanal). Nur
+ * "Ankuendigungen" und "Kursplan" sind eindeutig als Einweg-Kanal zu
+ * verstehen (read-only fuer die Klasse, siehe readOnlyForClass); alle
+ * anderen bleiben voll beschreibbar, da z. B. das Berichtsheft von den
  * Mitgliedern selbst befuellt wird. Admins koennen einzelne Kanal-Berechtigungen
  * bei Bedarf manuell in Discord weiter anpassen. Emoji-Praefix, Thema und
  * Willkommensnachricht sind rein kosmetisch (lesbarer/einladender direkt nach
@@ -85,7 +86,8 @@ const CHANNEL_BLUEPRINTS: readonly ChannelBlueprint[] = [
     topic: 'Anstehende Termine der Klasse.',
     welcomeMessage:
       '📅 Hier findet ihr anstehende Termine eurer Klasse. `/kursplan` zeigt euren aktuellen ' +
-      'Kursplan mit Kalenderwoche, `/kursinhalte` die Kursgliederung.',
+      'Kursplan mit Kalenderwoche, `/kursinhalte` die Kursgliederung - der komplette Kursplan ' +
+      'steht ausserdem dauerhaft im Kanal #📚-kursplan.',
   },
   {
     key: 'examChannelId',
@@ -103,6 +105,16 @@ const CHANNEL_BLUEPRINTS: readonly ChannelBlueprint[] = [
     welcomeMessage:
       '📝 Hier dokumentiert ihr eure Tages- und Wochenberichte. Nutzt `/tagesbericht-erstellen` ' +
       'bzw. `/wochenbericht-erstellen`.',
+  },
+  {
+    key: 'coursePlanChannelId',
+    name: '📚-kursplan',
+    type: ChannelType.GuildText,
+    readOnlyForClass: true,
+    topic: 'Kompletter Kursplan der Klasse mit Kursinhalten - nur Lesezugriff.',
+    welcomeMessage:
+      '📚 Hier postet der Bot automatisch euren kompletten Kursplan mit Kursinhalten, sobald ' +
+      'die Klassenleitung/Admin `/kursplan-importieren` ausführt.',
   },
   {
     key: 'materialChannelId',

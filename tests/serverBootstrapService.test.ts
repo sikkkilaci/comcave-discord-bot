@@ -254,7 +254,7 @@ describe('serverBootstrapService', () => {
       for (const name of CLASS_NAMES) {
         expect(result.classes[name].role.created).toBe(true);
         expect(result.classes[name].area.categoryCreated).toBe(true);
-        expect(result.classes[name].area.channelsCreated).toHaveLength(7);
+        expect(result.classes[name].area.channelsCreated).toHaveLength(8);
       }
 
       expect(result.verificationChannel.created).toBe(true);
@@ -271,11 +271,11 @@ describe('serverBootstrapService', () => {
         expect(call.permissions).toEqual([]);
       }
 
-      // 4 globale Kanaele (Verifizierung/wo-bin-ich/Log/Schulhof) + 3 x (1 Kategorie + 7 Kanaele)
-      // = 28, plus die globale COMCAVE-Plattformstruktur (ensureGlobalServerStructure): 8
+      // 4 globale Kanaele (Verifizierung/wo-bin-ich/Log/Schulhof) + 3 x (1 Kategorie + 8 Kanaele)
+      // = 31, plus die globale COMCAVE-Plattformstruktur (ensureGlobalServerStructure): 8
       // Kategorien + 28 neue Kanaele (31 Kanaele in der Struktur, davon 3 - Verifizierung/
-      // wo-bin-ich/Log - wiederverwendet statt neu angelegt) = 36. Gesamt 28 + 36 = 64.
-      expect(channelCreateCalls).toHaveLength(64);
+      // wo-bin-ich/Log - wiederverwendet statt neu angelegt) = 36. Gesamt 31 + 36 = 67.
+      expect(channelCreateCalls).toHaveLength(67);
 
       const guildConfig = await getOrCreateGuildConfig(guild.id);
       expect(guildConfig.verifiedRoleId).toBe(result.verifiedRole.id);
@@ -627,6 +627,7 @@ describe('serverBootstrapService', () => {
             '🎓-pruefungen',
             '📝-berichtsheft',
             '📚-lernmaterial',
+            '📚-kursplan',
             '🔊-sprachkanal',
           ].sort(),
         );

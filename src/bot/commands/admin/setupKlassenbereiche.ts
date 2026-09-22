@@ -37,7 +37,7 @@ const command: Command = {
   async execute(interaction) {
     if (!interaction.guild) return;
 
-    // Legt pro Klasse eine Kategorie + sieben Kanaele an (bis zu ~24
+    // Legt pro Klasse eine Kategorie + acht Kanaele an (bis zu ~27
     // sequentielle Discord-API-Aufrufe bei "alle Klassen") - das kann
     // Discords 3-Sekunden-Fenster fuer die initiale Interaktions-Antwort
     // ueberschreiten. Defer sofort, damit die Antwort spaeter per

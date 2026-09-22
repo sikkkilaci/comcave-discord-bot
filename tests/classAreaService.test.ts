@@ -256,7 +256,7 @@ describe('classAreaService', () => {
   });
 
   describe('setupClassArea - Erstanlage', () => {
-    it('legt Kategorie und alle sieben Kanaele neu an', async () => {
+    it('legt Kategorie und alle acht Kanaele neu an', async () => {
       const { guildConfig, klasse } = await setupGuildAndClass();
       const { guild, createCalls } = fakeGuild({});
 
@@ -271,12 +271,13 @@ describe('classAreaService', () => {
           '🎓-pruefungen',
           '📝-berichtsheft',
           '📚-lernmaterial',
+          '📚-kursplan',
           '🔊-sprachkanal',
         ].sort(),
       );
       expect(result.channelsSkipped).toHaveLength(0);
-      // 1 Kategorie + 7 Kanaele.
-      expect(createCalls).toHaveLength(8);
+      // 1 Kategorie + 8 Kanaele.
+      expect(createCalls).toHaveLength(9);
     });
 
     it('setzt fuer alle Kanaele den korrekten parent (Kategorie) und Typ', async () => {
@@ -289,7 +290,7 @@ describe('classAreaService', () => {
       expect(category?.name).toBe('📁 Klasse A');
 
       const children = createCalls.filter((c) => c.type !== ChannelType.GuildCategory);
-      expect(children).toHaveLength(7);
+      expect(children).toHaveLength(8);
       for (const child of children) {
         expect(child.parent).toBe(fakeIdFor(category!));
       }
@@ -317,6 +318,7 @@ describe('classAreaService', () => {
       expect(stored?.reportChannelId).toBe('channel:📝-berichtsheft');
       expect(stored?.materialChannelId).toBe('channel:📚-lernmaterial');
       expect(stored?.voiceChannelId).toBe('channel:🔊-sprachkanal');
+      expect(stored?.coursePlanChannelId).toBe('channel:📚-kursplan');
     });
 
     it('schreibt einen "class.area_setup"-Audit-Log-Eintrag', async () => {
@@ -331,7 +333,7 @@ describe('classAreaService', () => {
       expect(entry?.actorDiscordId).toBe('actor-42');
       const metadata = JSON.parse(entry?.metadata ?? '{}');
       expect(metadata.categoryCreated).toBe(true);
-      expect(metadata.channelsCreated).toHaveLength(7);
+      expect(metadata.channelsCreated).toHaveLength(8);
     });
 
     it('verweigert der Klassenrolle Schreibrechte nur im Ankuendigungen-Kanal', async () => {
@@ -357,7 +359,7 @@ describe('classAreaService', () => {
 
       await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 
-      expect(createCalls).toHaveLength(8);
+      expect(createCalls).toHaveLength(9);
       for (const call of createCalls) {
         const everyoneOverwrite = overwriteFor(call, EVERYONE_ID);
         expect(everyoneOverwrite?.deny).toContain(PermissionFlagsBits.ViewChannel);
@@ -371,7 +373,7 @@ describe('classAreaService', () => {
 
       await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 
-      expect(createCalls).toHaveLength(8);
+      expect(createCalls).toHaveLength(9);
       for (const call of createCalls) {
         const adminOverwrite = overwriteFor(call, adminRoleId);
         expect(adminOverwrite?.allow).toContain(PermissionFlagsBits.ViewChannel);
@@ -498,6 +500,7 @@ describe('classAreaService', () => {
           fullyConfigured.reportChannelId,
           fullyConfigured.materialChannelId,
           fullyConfigured.voiceChannelId,
+          fullyConfigured.coursePlanChannelId,
         ].filter((id): id is string => Boolean(id)),
       );
       const second = fakeGuild({ existingChannelIds: existingIds });
@@ -506,7 +509,7 @@ describe('classAreaService', () => {
 
       expect(result.categoryCreated).toBe(false);
       expect(result.channelsCreated).toHaveLength(0);
-      expect(result.channelsSkipped).toHaveLength(7);
+      expect(result.channelsSkipped).toHaveLength(8);
       expect(second.createCalls).toHaveLength(0);
 
       const auditEntries = await listAuditEvents(guildId);
@@ -529,6 +532,7 @@ describe('classAreaService', () => {
           configured.reportChannelId,
           configured.materialChannelId,
           configured.voiceChannelId,
+          configured.coursePlanChannelId,
         ].filter((id): id is string => Boolean(id)),
       );
       const second = fakeGuild({ existingChannelIds: existingIds });
@@ -537,7 +541,7 @@ describe('classAreaService', () => {
 
       expect(result.categoryCreated).toBe(false);
       expect(result.channelsCreated).toEqual(['💬-klassenchat']);
-      expect(result.channelsSkipped).toHaveLength(6);
+      expect(result.channelsSkipped).toHaveLength(7);
       expect(second.createCalls).toHaveLength(1);
       expect(second.createCalls[0]?.name).toBe('💬-klassenchat');
 
@@ -569,6 +573,7 @@ describe('classAreaService', () => {
             reportChannelId: null,
             materialChannelId: null,
             voiceChannelId: null,
+            coursePlanChannelId: null,
           },
         });
         const forgottenInDb = (await getClassByName(guildId, 'A'))!;
@@ -578,7 +583,7 @@ describe('classAreaService', () => {
 
         expect(result.categoryCreated).toBe(false);
         expect(result.channelsCreated).toHaveLength(0);
-        expect(result.channelsSkipped).toHaveLength(7);
+        expect(result.channelsSkipped).toHaveLength(8);
         // Keine einzige neue create()-Aufruf in diesem zweiten Durchlauf - alles wurde per
         // Namensabgleich wiedergefunden statt dupliziert.
         expect(shared.createCalls.length).toBe(createCallsBeforeRetry);
@@ -826,7 +831,7 @@ describe('classAreaService', () => {
       const result = await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 
       expect(result.categoryCreated).toBe(true);
-      expect(result.channelsCreated).toHaveLength(7);
+      expect(result.channelsCreated).toHaveLength(8);
     });
   });
 
@@ -840,13 +845,13 @@ describe('classAreaService', () => {
       const textChannelCalls = createCalls.filter(
         (c) => c.type === ChannelType.GuildText && c.name !== undefined,
       );
-      expect(textChannelCalls).toHaveLength(6);
+      expect(textChannelCalls).toHaveLength(7);
       for (const call of textChannelCalls) {
         expect(call.topic).toBeTruthy();
       }
-      // 6 Textkanaele bekommen je eine gepostete UND angepinnte Willkommensnachricht.
-      expect(sendCalls).toHaveLength(6);
-      expect(pinCalls).toHaveLength(6);
+      // 7 Textkanaele bekommen je eine gepostete UND angepinnte Willkommensnachricht.
+      expect(sendCalls).toHaveLength(7);
+      expect(pinCalls).toHaveLength(7);
     });
 
     it('postet keine Willkommensnachricht in den Sprachkanal', async () => {
@@ -875,6 +880,7 @@ describe('classAreaService', () => {
           configured.reportChannelId,
           configured.materialChannelId,
           configured.voiceChannelId,
+          configured.coursePlanChannelId,
         ].filter((id): id is string => Boolean(id)),
       );
       const second = fakeGuild({ existingChannelIds: existingIds });
@@ -904,7 +910,7 @@ describe('classAreaService', () => {
         // Halbe reale Wartezeit ist hier vernachlaessigbar gegenueber der Robustheit.
         const result = await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 
-        expect(result.channelsCreated).toHaveLength(7);
+        expect(result.channelsCreated).toHaveLength(8);
         expect(pinCalls.filter((id) => id === chatChannelId)).toHaveLength(2);
       },
       5000,
@@ -921,7 +927,7 @@ describe('classAreaService', () => {
       const result = await setupClassArea(guild, guildConfig, klasse, 'actor-1');
 
       expect(result.categoryCreated).toBe(true);
-      expect(result.channelsCreated).toHaveLength(7);
+      expect(result.channelsCreated).toHaveLength(8);
     });
   });
 });
