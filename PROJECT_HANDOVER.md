@@ -1,6 +1,6 @@
 # PROJECT_HANDOVER.md — COMCAVE Discord Bot
 
-Vollständige technische und fachliche Übergabe. Stand: 2026-09-22, Branch `claude/great-albattani-q7cy9o`, Commit `b4f6b72`. Diese Datei ist so geschrieben, dass sie ohne vorherigen Chatverlauf verständlich ist.
+Vollständige technische und fachliche Übergabe. Stand: 2026-09-22, Branch `claude/great-albattani-q7cy9o`, Commit `9bfeb77`. Diese Datei ist so geschrieben, dass sie ohne vorherigen Chatverlauf verständlich ist.
 
 **Methodik-Hinweis:** Alle Aussagen zu Repository-Code sind aus dem tatsächlichen Quellcode verifiziert (Stand dieses Commits). Aussagen zum **Discord-Live-Zustand** stammen ausschließlich aus vom Auftraggeber bereitgestellten Screenshots — Repo-Code ist **kein** Beweis für den tatsächlichen Discord-Zustand, das wird durchgehend unterschieden.
 
@@ -288,7 +288,7 @@ GitHub Actions: Lint (`eslint`), Format-Check (`prettier --check`), Typecheck (`
 ## 25. Git-/Branch-Stand
 
 - Repository `sikkkilaci/comcave-discord-bot`, **einziger** Arbeits-Branch `claude/great-albattani-q7cy9o` (kein `main`, daher keine Pull Requests — direkte Commits).
-- 52 Commits insgesamt, aktueller HEAD `b4f6b72`.
+- 54 Commits insgesamt, aktueller HEAD `9bfeb77`.
 - Zusätzlich vorhanden: Backup-Branch `backup-vor-onboarding-gate` (Stand vor dem großen Onboarding-Gate-Umbau).
 
 ---
@@ -296,7 +296,7 @@ GitHub Actions: Lint (`eslint`), Format-Check (`prettier --check`), Typecheck (`
 ## 26. Bekannte Abweichungen & 27. bekannte Fehler
 
 1. **Klassenrolle zu früh vergeben** (s. Abschn. 6/10) — bestätigte Soll/Ist-Abweichung im Code.
-2. **🏫 Schulhof fehlt auf dem realen Zielserver** trotz korrektem Code — wahrscheinlichste Ursache: laufender Bot-Prozess war beim letzten `/setup-server`-Lauf nicht auf aktuellem Commit-Stand (kein Code-Fehler, sondern Deploy-Stand-Problem; **nicht abschließend von hier aus beweisbar**, da kein Zugriff auf den laufenden Prozess).
+2. **🏫 Schulhof fehlt auf dem realen Zielserver laut Screenshot**, obwohl der Code ihn korrekt erzeugt (`serverBootstrapService.ts`). Die Ursache ist derzeit nicht abschließend festgestellt.
 3. **Kursplan nur für Klasse A** mit echten Daten — B/C strukturell vorbereitet, aber ohne Datenquelle.
 4. Mehrere global angelegte Kanäle (s. Abschn. 28) sind reine, permissionierte Hüllen ohne Bot-Logik dahinter.
 

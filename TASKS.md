@@ -8,7 +8,7 @@ Nur echte Produkt-/Projektaufgaben. Bugfixes/Reparaturen (TypeScript-, Lint-, CI
 
 ## ALS NÄCHSTES
 
-- Bot auf aktuellem Commit-Stand redeployen und `/setup-server` auf dem Zielserver erneut ausführen (Schulhof fehlt aktuell dort — siehe PROJECT_STATE.md).
+- Ursache für den auf dem Zielserver fehlenden 🏫 Schulhof klären (siehe PROJECT_STATE.md) und danach `/setup-server` erneut ausführen.
 - Architekturentscheidung treffen und umsetzen: Klassenrolle/Klassenbereichs-Zugriff erst nach vollständigem Onboarding-Abschluss (Rolle „Mitglied") statt bereits bei Klassenbestätigung vergeben.
 - IHK-Analyseergebnisse dauerhaft und dokumentiert im Repository halten (Grundsicherung in dieser Übergabe erledigt, siehe `data/ihk-analysis/`) und fachlich mit Ausbildungsplan/Kursinhalten verknüpfen (aktuell keine Verknüpfung).
 
