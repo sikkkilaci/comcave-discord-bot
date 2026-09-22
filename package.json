@@ -10,7 +10,8 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "prestart": "prisma migrate deploy",
     "start": "node dist/index.js",
     "deploy-commands": "tsx src/bot/handlers/deployCommands.ts",
     "course-plan:import": "tsx src/scripts/importCoursePlan.ts",
