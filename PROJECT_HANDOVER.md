@@ -42,16 +42,16 @@ Historische IHK-Prüfungen dienen als **Evidenz für Themenrelevanz**, nicht als
 
 Alle Rollen werden zentral über `serverBootstrapService.ts` (`/setup-server`) angelegt und ihre IDs in `GuildConfig`/`Class` persistiert (keine hartkodierten IDs im Code).
 
-| Rolle | Zweck | Vergabe | Entzug | Berechtigungen (Discord) | Ausdrücklich NICHT | Status |
-|---|---|---|---|---|---|---|
-| **@everyone** | Basis | automatisch | nie | nur `🔐-verifizierung` (PUBLIC) sichtbar/schreibbar | kein Zugriff auf alle anderen Kategorien/Kanäle | ✅ |
-| **Verifiziert** | Schritt 1 abgeschlossen (Identität bestätigt) | `verificationService.setMemberVerification()` nach Klick auf Verifizierungs-Button | nicht vorgesehen (kein Entzugspfad im Code) | zusätzlich: `🏫 Schulhof` (lesen+schreiben) | **nicht** die globale Serverstruktur (01–08); die ist an `onboardedRoleId` gebunden | ✅ Code, ❓ Discord (s. Abschn. 6) |
-| **Mitglied** (`onboardedRoleId`) | Gesamter Eintrittsflow abgeschlossen | `memberJourneyService.grantOnboardedRoleIfComplete()`, ausgelöst einzig nach Regelwerk-Zustimmung | kein automatischer Entzugspfad | schaltet Kategorien 01 (außer Verifizierung)–07 frei (VERIFIED-Access, s. Abschn. 6/7) | keine Administrator-Rechte | ✅ Code, ❓ Discord |
-| **Admin** | Serververwaltung | `/setup-admin-rollen` bzw. Bootstrap | manuell in Discord | voller Zugriff auf 08·INTERN, alle Klassenbereiche, alle Admin-Commands | Rolle darf laut Fail-Closed-Check **keine** Discord-„Administrator"-Berechtigung tragen (`roleHasAdministrator()`-Guard verhindert Bootstrap sonst) | ✅ |
-| **Moderator** | Eingeschränkte Verwaltung | `/setup-admin-rollen` bzw. Bootstrap | manuell | Zugriff auf 08·INTERN (außer bestimmte Voice-Mod-Rechte in Klassenbereichen), Schreibrecht in globalen VERIFIED-Kanälen | keine Administrator-Rechte | ✅ |
-| **Klasse A / B / C** | Zugehörigkeit zu einer Klasse | `classService.assignClass()` nach expliziter Klassenbestätigung | nur Admin-Override `/mitglied-klasse-aendern` (`allowChange: true`) | Sichtbarkeit + Schreibrecht im jeweils **eigenen** privaten Klassenbereich (Kategorie „Klasse X"), inkl. Voice-Kanal | **kein** Zugriff auf andere Klassenbereiche (separate Rolle pro Klasse, `Member.classId` ist Einzelwert) | ✅ Code, ⚠️ **wird zu früh vergeben** (s. Abschn. 6) |
-| **Klassenleitung A / B / C** (`Class.leadRoleId`) | klassenbezogene Administration ohne globale Admin-Rechte | `/setup-klassenleitung` | `/entferne-klassenleitung` | zusätzliche Schreib-/Verwaltungsrechte NUR im eigenen Klassenbereich (Prüfungen/Termine/Lernmaterial/Berichte anlegen, `assertClassManagementAccess()`) | keine Rechte in fremden Klassenbereichen, keine globalen Admin-Rechte | ✅ |
-| **Bot-eigene Rolle** | technischer Träger für Bot-Permissions | automatisch von Discord bei Einladung | — | eigener Allow-Overwrite in jeder verwalteten Kategorie/jedem Kanal (sonst würde `@everyone`-Deny den Bot selbst aussperren) | — | ✅ |
+| Rolle                                             | Zweck                                                    | Vergabe                                                                                           | Entzug                                                              | Berechtigungen (Discord)                                                                                                                                | Ausdrücklich NICHT                                                                                                                                  | Status                                               |
+| ------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **@everyone**                                     | Basis                                                    | automatisch                                                                                       | nie                                                                 | nur `🔐-verifizierung` (PUBLIC) sichtbar/schreibbar                                                                                                     | kein Zugriff auf alle anderen Kategorien/Kanäle                                                                                                     | ✅                                                   |
+| **Verifiziert**                                   | Schritt 1 abgeschlossen (Identität bestätigt)            | `verificationService.setMemberVerification()` nach Klick auf Verifizierungs-Button                | nicht vorgesehen (kein Entzugspfad im Code)                         | zusätzlich: `🏫 Schulhof` (lesen+schreiben)                                                                                                             | **nicht** die globale Serverstruktur (01–08); die ist an `onboardedRoleId` gebunden                                                                 | ✅ Code, ❓ Discord (s. Abschn. 6)                   |
+| **Mitglied** (`onboardedRoleId`)                  | Gesamter Eintrittsflow abgeschlossen                     | `memberJourneyService.grantOnboardedRoleIfComplete()`, ausgelöst einzig nach Regelwerk-Zustimmung | kein automatischer Entzugspfad                                      | schaltet Kategorien 01 (außer Verifizierung)–07 frei (VERIFIED-Access, s. Abschn. 6/7)                                                                  | keine Administrator-Rechte                                                                                                                          | ✅ Code, ❓ Discord                                  |
+| **Admin**                                         | Serververwaltung                                         | `/setup-admin-rollen` bzw. Bootstrap                                                              | manuell in Discord                                                  | voller Zugriff auf 08·INTERN, alle Klassenbereiche, alle Admin-Commands                                                                                 | Rolle darf laut Fail-Closed-Check **keine** Discord-„Administrator"-Berechtigung tragen (`roleHasAdministrator()`-Guard verhindert Bootstrap sonst) | ✅                                                   |
+| **Moderator**                                     | Eingeschränkte Verwaltung                                | `/setup-admin-rollen` bzw. Bootstrap                                                              | manuell                                                             | Zugriff auf 08·INTERN (außer bestimmte Voice-Mod-Rechte in Klassenbereichen), Schreibrecht in globalen VERIFIED-Kanälen                                 | keine Administrator-Rechte                                                                                                                          | ✅                                                   |
+| **Klasse A / B / C**                              | Zugehörigkeit zu einer Klasse                            | `classService.assignClass()` nach expliziter Klassenbestätigung                                   | nur Admin-Override `/mitglied-klasse-aendern` (`allowChange: true`) | Sichtbarkeit + Schreibrecht im jeweils **eigenen** privaten Klassenbereich (Kategorie „Klasse X"), inkl. Voice-Kanal                                    | **kein** Zugriff auf andere Klassenbereiche (separate Rolle pro Klasse, `Member.classId` ist Einzelwert)                                            | ✅ Code, ⚠️ **wird zu früh vergeben** (s. Abschn. 6) |
+| **Klassenleitung A / B / C** (`Class.leadRoleId`) | klassenbezogene Administration ohne globale Admin-Rechte | `/setup-klassenleitung`                                                                           | `/entferne-klassenleitung`                                          | zusätzliche Schreib-/Verwaltungsrechte NUR im eigenen Klassenbereich (Prüfungen/Termine/Lernmaterial/Berichte anlegen, `assertClassManagementAccess()`) | keine Rechte in fremden Klassenbereichen, keine globalen Admin-Rechte                                                                               | ✅                                                   |
+| **Bot-eigene Rolle**                              | technischer Träger für Bot-Permissions                   | automatisch von Discord bei Einladung                                                             | —                                                                   | eigener Allow-Overwrite in jeder verwalteten Kategorie/jedem Kanal (sonst würde `@everyone`-Deny den Bot selbst aussperren)                             | —                                                                                                                                                   | ✅                                                   |
 
 Selbstständig identifiziert, keine weiteren Rollen im Code gefunden (Suche über `guildConfigRepository`, `classRepository`, `serverBootstrapService`).
 
@@ -60,10 +60,12 @@ Selbstständig identifiziert, keine weiteren Rollen im Code gefunden (Suche übe
 ## 6. Access-Gate / User Journey
 
 **SOLL:**
+
 ```
 Verifizierung → Profil/Name → Standort → Fachrichtung → Klasse → explizite Klassenbestätigung
 → Onboarding-Fragebogen → Regeln → Rolle „Mitglied"
 ```
+
 Vor vollständigem Abschluss: **nur** 🏫 Schulhof + notwendiger Verifizierungskanal. Nach Abschluss: Mitglied + vollständiger Plattformzugriff + korrekter Klassenbereich.
 
 **IST (Code, `memberJourneyService.ts` / `journeyFlow.ts`):** Guard-Kette exakt in dieser Reihenfolge implementiert (`JOURNEY_STEPS`: `NEEDS_VERIFICATION → NEEDS_PROFILE_DETAILS → NEEDS_LOCATION → NEEDS_FACHRICHTUNG → NEEDS_CLASS → NEEDS_ONBOARDING → NEEDS_RULES_ACCEPTANCE → COMPLETE`). Rolle „Mitglied" wird einzig nach Regelwerk-Zustimmung vergeben (`grantOnboardedRoleIfComplete()`, aufgerufen nur aus `handleRulesAcceptButton`). Der komplette Flow läuft per DM/ephemere Interaktionen (`buildSafeNextStepReplyPart()`), unabhängig von Kanalsichtbarkeit.
@@ -172,34 +174,34 @@ Vor vollständigem Abschluss: **nur** 🏫 Schulhof + notwendiger Verifizierungs
 
 **Wurde tatsächlich bereits durchgeführt — nicht neu berechnet.**
 
-| Schritt | Ergebnis |
-|---|---|
-| PDFs verarbeitet | 722 |
-| Systemintegration (FISI) | 425 |
-| Anwendungsentwicklung (FIAE) | 175 |
-| WISO | 16 |
-| Kernqualifikationen (gemeinsam) | 4 |
-| Sonstige (andere Berufe/Referenz) | 91 |
+| Schritt                            | Ergebnis                                                                                                                           |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| PDFs verarbeitet                   | 722                                                                                                                                |
+| Systemintegration (FISI)           | 425                                                                                                                                |
+| Anwendungsentwicklung (FIAE)       | 175                                                                                                                                |
+| WISO                               | 16                                                                                                                                 |
+| Kernqualifikationen (gemeinsam)    | 4                                                                                                                                  |
+| Sonstige (andere Berufe/Referenz)  | 91                                                                                                                                 |
 | Stufe 1: FISI historisch 1999–2024 | n=65, Jahre 1999–2022 abgedeckt (2006–2010 nur 0 auswertbare Dokumente — Stichprobenlücke durch Scan-Qualität, kein reales Muster) |
-| Stufe 2: FISI AO2020 | n=9 |
-| Stufe 2: FIAE AO2020 | n=4 |
-| Stufe 2: WISO | n=16 |
-| Stufe 2: Kernqualifikationen | n=4 |
+| Stufe 2: FISI AO2020               | n=9                                                                                                                                |
+| Stufe 2: FIAE AO2020               | n=4                                                                                                                                |
+| Stufe 2: WISO                      | n=16                                                                                                                               |
+| Stufe 2: Kernqualifikationen       | n=4                                                                                                                                |
 
 **Methodik:** `pdftotext`-Extraktion mit Plausibilitätsprüfung gegen verstümmelte OCR-Layer → Klassifikation nach Ordner-/Dateinamen-Mustern (`classify.py`) → Themen-Taxonomie als Regex-Keyword-Katalog (`taxonomy.py`, u. a. Netzwerktechnik/TCP-IP, WLAN, Active Directory, Virtualisierung, IT-Sicherheit, Datenschutz, Programmierung, Datenbanken, Arbeitsrecht, Wirtschaftskreislauf) → Themenhäufigkeit je Zeitraum (`run_topics.py`).
 
 **Artefakt-Verfügbarkeit (geprüft in dieser Sitzung):**
 
-| Artefakt | Status | Aktion |
-|---|---|---|
-| `classification.json` (Datei-→-Kategorie-Zuordnung) | ✅ noch im Scratchpad vorhanden | → nach `data/ihk-analysis/classification.json` gesichert |
-| `topic_results.json` (Themenhäufigkeit je Stufe) | ✅ noch im Scratchpad vorhanden | → nach `data/ihk-analysis/topic_results.json` gesichert |
-| `analysis_records.json` (Rohdatensätze je Dokument, Metadaten) | ✅ noch im Scratchpad vorhanden | → nach `data/ihk-analysis/analysis_records.json` gesichert |
-| `taxonomy.py` (Themenkatalog/Keywords) | ✅ vorhanden | → nach `data/ihk-analysis/taxonomy.py` gesichert |
-| `extract_usable.py`, `classify.py`, `run_topics.py` (Analyse-Skripte) | ✅ vorhanden | → nach `data/ihk-analysis/scripts/` gesichert (Nachvollziehbarkeit) |
-| `extracted_text/*.txt` (Volltext je PDF) | ✅ noch vorhanden, **absichtlich nicht kopiert** | enthält Original-Prüfungstext → Vervielfältigungsverbot (Abschn. 14) |
-| 722 Original-PDFs | ✅ noch vorhanden, **absichtlich nicht kopiert** | dito |
-| `analysis_records.pkl` (Python-Pickle) | ✅ vorhanden, **nicht kopiert** | Binärformat ohne Mehrwert ggü. der `.json`-Fassung, potenzielles Sicherheitsrisiko (Pickle-Deserialisierung) |
+| Artefakt                                                              | Status                                           | Aktion                                                                                                       |
+| --------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `classification.json` (Datei-→-Kategorie-Zuordnung)                   | ✅ noch im Scratchpad vorhanden                  | → nach `data/ihk-analysis/classification.json` gesichert                                                     |
+| `topic_results.json` (Themenhäufigkeit je Stufe)                      | ✅ noch im Scratchpad vorhanden                  | → nach `data/ihk-analysis/topic_results.json` gesichert                                                      |
+| `analysis_records.json` (Rohdatensätze je Dokument, Metadaten)        | ✅ noch im Scratchpad vorhanden                  | → nach `data/ihk-analysis/analysis_records.json` gesichert                                                   |
+| `taxonomy.py` (Themenkatalog/Keywords)                                | ✅ vorhanden                                     | → nach `data/ihk-analysis/taxonomy.py` gesichert                                                             |
+| `extract_usable.py`, `classify.py`, `run_topics.py` (Analyse-Skripte) | ✅ vorhanden                                     | → nach `data/ihk-analysis/scripts/` gesichert (Nachvollziehbarkeit)                                          |
+| `extracted_text/*.txt` (Volltext je PDF)                              | ✅ noch vorhanden, **absichtlich nicht kopiert** | enthält Original-Prüfungstext → Vervielfältigungsverbot (Abschn. 14)                                         |
+| 722 Original-PDFs                                                     | ✅ noch vorhanden, **absichtlich nicht kopiert** | dito                                                                                                         |
+| `analysis_records.pkl` (Python-Pickle)                                | ✅ vorhanden, **nicht kopiert**                  | Binärformat ohne Mehrwert ggü. der `.json`-Fassung, potenzielles Sicherheitsrisiko (Pickle-Deserialisierung) |
 
 **Wichtig:** Diese Sicherung erfolgte als reines Datei-Kopieren (keine Neuberechnung, keine erneute PDF-Verarbeitung). Die kopierten Dateien liegen im Arbeitsverzeichnis, wurden aber **nicht committet/gepusht** (siehe Auftrag, Abschn. 29 — Freigabe steht noch aus).
 

@@ -2,21 +2,7 @@
   "stufe1_fisi_historisch": {
     "label": "Stufe 1: FISI historische Gesamtbetrachtung 1999-2024",
     "n_documents": 65,
-    "years_covered": [
-      1999,
-      2002,
-      2011,
-      2012,
-      2013,
-      2014,
-      2015,
-      2016,
-      2017,
-      2018,
-      2019,
-      2021,
-      2022
-    ],
+    "years_covered": [1999, 2002, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022],
     "topics": {
       "Netzwerktechnik / TCP-IP / Subnetting": {
         "documents_matching": 53,
@@ -248,10 +234,7 @@
   "stufe2_fisi_ao2020": {
     "label": "Stufe 2: FISI AO2020 Detailanalyse",
     "n_documents": 9,
-    "years_covered": [
-      2021,
-      2022
-    ],
+    "years_covered": [2021, 2022],
     "topics": {
       "Netzwerktechnik / TCP-IP / Subnetting": {
         "documents_matching": 9,
@@ -421,9 +404,7 @@
   "stufe2_fiae_ao2020": {
     "label": "Stufe 2: FIAE AO2020 Detailanalyse",
     "n_documents": 4,
-    "years_covered": [
-      2021
-    ],
+    "years_covered": [2021],
     "topics": {
       "Programmierung Grundlagen": {
         "documents_matching": 4,
@@ -488,10 +469,7 @@
         "coverage_by_period": {
           "2021-2024 (AO2020)": "2/4"
         },
-        "example_files": [
-          "2021-WI FIAE Anlagen.pdf",
-          "2021-So FIAE Aufgaben.pdf"
-        ]
+        "example_files": ["2021-WI FIAE Anlagen.pdf", "2021-So FIAE Aufgaben.pdf"]
       },
       "Projektmanagement / Wirtschaftlichkeit": {
         "documents_matching": 0,
@@ -505,9 +483,7 @@
         "coverage_by_period": {
           "2021-2024 (AO2020)": "1/4"
         },
-        "example_files": [
-          "2021-So FIAE Lösungserläuerungen (komplett).pdf"
-        ]
+        "example_files": ["2021-So FIAE Lösungserläuerungen (komplett).pdf"]
       },
       "Datenschutz": {
         "documents_matching": 0,
@@ -521,18 +497,7 @@
   "stufe2_wiso": {
     "label": "Stufe 2: WISO (getrennt behandelt)",
     "n_documents": 16,
-    "years_covered": [
-      2007,
-      2011,
-      2012,
-      2013,
-      2015,
-      2016,
-      2018,
-      2020,
-      2021,
-      2022
-    ],
+    "years_covered": [2007, 2011, 2012, 2013, 2015, 2016, 2018, 2020, 2021, 2022],
     "topics": {
       "Berufsausbildung / Ausbildungsvertrag": {
         "documents_matching": 2,
@@ -597,10 +562,7 @@
           "2016-2020": "0/3",
           "2021-2024 (AO2020)": "2/8"
         },
-        "example_files": [
-          "2021-WI WISO Aufgaben.pdf",
-          "2021-So WISO Aufgaben.pdf"
-        ]
+        "example_files": ["2021-WI WISO Aufgaben.pdf", "2021-So WISO Aufgaben.pdf"]
       },
       "Unternehmensformen": {
         "documents_matching": 3,
@@ -624,10 +586,7 @@
           "2016-2020": "0/3",
           "2021-2024 (AO2020)": "2/8"
         },
-        "example_files": [
-          "2021-WI WISO Aufgaben.pdf",
-          "2021-So WISO Aufgaben.pdf"
-        ]
+        "example_files": ["2021-WI WISO Aufgaben.pdf", "2021-So WISO Aufgaben.pdf"]
       },
       "Lohn / Gehalt": {
         "documents_matching": 3,
@@ -648,10 +607,7 @@
   "stufe2_kernqualifikationen": {
     "label": "Stufe 2: Kernqualifikationen gemeinsam (AP1 IT-Berufe)",
     "n_documents": 4,
-    "years_covered": [
-      2021,
-      2024
-    ],
+    "years_covered": [2021, 2024],
     "topics": {
       "Netzwerktechnik (gemeinsame Grundlagen)": {
         "documents_matching": 3,
@@ -671,10 +627,7 @@
           "2021-2024 (AO2020)": "1/3",
           "unbekannt": "1/1"
         },
-        "example_files": [
-          "IT-BER1-1.pdf",
-          "2021-WI KQ Aufgaben.pdf"
-        ]
+        "example_files": ["IT-BER1-1.pdf", "2021-WI KQ Aufgaben.pdf"]
       },
       "IT-Sicherheit / Datenschutz (gemeinsam)": {
         "documents_matching": 4,
@@ -682,11 +635,7 @@
           "2021-2024 (AO2020)": "3/3",
           "unbekannt": "1/1"
         },
-        "example_files": [
-          "IT-BER1-1.pdf",
-          "2021-WI KQ Aufgaben.pdf",
-          "AP1_2024_Losung.pdf"
-        ]
+        "example_files": ["IT-BER1-1.pdf", "2021-WI KQ Aufgaben.pdf", "AP1_2024_Losung.pdf"]
       },
       "Datenbanken (gemeinsame Grundlagen)": {
         "documents_matching": 1,
@@ -694,9 +643,7 @@
           "2021-2024 (AO2020)": "1/3",
           "unbekannt": "0/1"
         },
-        "example_files": [
-          "2021-WI KQ Aufgaben.pdf"
-        ]
+        "example_files": ["2021-WI KQ Aufgaben.pdf"]
       },
       "Rechtliche Grundlagen": {
         "documents_matching": 0,

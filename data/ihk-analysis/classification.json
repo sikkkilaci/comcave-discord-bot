@@ -714,16 +714,9 @@
       "IHK alt/ITSYSKFM AP Wi 2012/Kernqualifikationen/2013_07_02_12_02_54.pdf",
       "IHK alt/ITSYSKFM AP Wi 2012/Fachqualifikationen/2013_07_02_12_01_11.pdf"
     ],
-    "Informatikkaufmann/-frau (alt)": [
-      "2021-WI InfK Aufgaben.pdf"
-    ],
-    "IT-Systemelektroniker (alt)": [
-      "2021-WI SE Anlagen.pdf",
-      "2021-WI SE Aufgaben.pdf"
-    ],
-    "Referenz/Sonstiges": [
-      "Prufungskatalog.pdf"
-    ]
+    "Informatikkaufmann/-frau (alt)": ["2021-WI InfK Aufgaben.pdf"],
+    "IT-Systemelektroniker (alt)": ["2021-WI SE Anlagen.pdf", "2021-WI SE Aufgaben.pdf"],
+    "Referenz/Sonstiges": ["Prufungskatalog.pdf"]
   },
   "unresolved": [
     "Prfung_Winter_2021.pdf",

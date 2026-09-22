@@ -3,22 +3,27 @@
 Nur echte Produkt-/Projektaufgaben. Bugfixes/Reparaturen (TypeScript-, Lint-, CI-, Build-, Race-Condition-, Permission-Fixes) sind **nicht** einzeln als Produktaufgaben gelistet — sie stecken bereits im aktuellen, funktionierenden Code (siehe PROJECT_HANDOVER.md, Abschnitt „Reparaturen").
 
 ## AKTUELL
+
 - Erweiterte Tests für den zweistufigen Klassenauswahl-Flow (Klassenübersicht + Bestätigungs-Screen) fertigstellen und volle Verifikation (Test/Lint/Format/Typecheck/Build) abschließen.
 
 ## ALS NÄCHSTES
+
 - Bot auf aktuellem Commit-Stand redeployen und `/setup-server` auf dem Zielserver erneut ausführen (Schulhof fehlt aktuell dort — siehe PROJECT_STATE.md).
 - Architekturentscheidung treffen und umsetzen: Klassenrolle/Klassenbereichs-Zugriff erst nach vollständigem Onboarding-Abschluss (Rolle „Mitglied") statt bereits bei Klassenbestätigung vergeben.
 - IHK-Analyseergebnisse dauerhaft und dokumentiert im Repository halten (Grundsicherung in dieser Übergabe erledigt, siehe `data/ihk-analysis/`) und fachlich mit Ausbildungsplan/Kursinhalten verknüpfen (aktuell keine Verknüpfung).
 
 ## SPÄTER
+
 - Kursplan-Datenquelle für Klasse B/C ergänzen (aktuell nur Klasse A hat echte Kursplan-Daten).
 - Die strukturell bereits angelegten, aber inhaltlich leeren Plattformkanäle mit echter Bot-Logik hinterlegen: Lern-Cockpit, Selbsttests, Lernfortschritt-Tracking, Prüfungs-Cockpit, Prüfungsvorbereitung, Prüfungsfragen, Fragen-und-Antworten, Wichtige Informationen, Heute, Austausch, Projekte.
 - Fachliche Verknüpfung „historische Prüfungsrelevanz → individueller Lernfokus" (Ausbildungsplan/Kursinhalt/Lernmaterial/Selbsttest/IHK-Themenhäufigkeit) als zusammenhängendes Feature konzipieren und umsetzen.
 
 ## BLOCKIERT
+
 - Keine bekannten blockierten Aufgaben.
 
 ## ERLEDIGT
+
 - Verifizierung neuer Mitglieder (Service, Button, Commands, Audit-Log).
 - Teilnehmerprofil (Name/Alter), COMCAVE-Standorte (226, Suche, Import), Fachrichtungswahl.
 - Klassenwahl A/B/C inkl. Einmal-Sperre, Admin-Override (`/mitglied-klasse-aendern`), zweistufige Bestätigung mit Teilnehmerübersicht, Race-Condition-Schutz.
