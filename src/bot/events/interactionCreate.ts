@@ -12,7 +12,8 @@ import {
 import type { BotEvent } from '../../types/event.js';
 import type { BotClient } from '../../types/client.js';
 import { getOrCreateGuildConfig } from '../../repositories/guildConfigRepository.js';
-import { hasPermissionLevel } from '../../permissions/checkPermission.js';
+import { getClassByName } from '../../repositories/classRepository.js';
+import { hasPermissionLevel, isServerAdmin } from '../../permissions/checkPermission.js';
 import { assertMemberVerified, setMemberVerification } from '../../services/verificationService.js';
 import { submitAnswer } from '../../services/onboardingService.js';
 import {
@@ -22,6 +23,9 @@ import {
   getCurrentClassName,
   requestClassHelp,
 } from '../../services/classService.js';
+import { formatClassAreaSetupResult, setupClassArea } from '../../services/classAreaService.js';
+import { runKursplanImportAndSync } from '../../services/classCoursePlanService.js';
+import { importCourseContentAsAdmin } from '../../services/courseContentImportService.js';
 import {
   assertFachrichtungChosen,
   chooseFachrichtung,
@@ -66,8 +70,18 @@ import {
   acknowledgeCourseEntryForMember,
   getCoursePlanOverviewForClass,
 } from '../../services/coursePlanService.js';
+import {
+  ADMIN_PANEL_KLASSENBEREICHE_CUSTOM_ID,
+  ADMIN_PANEL_KURSINHALTE_IMPORT_CUSTOM_ID,
+  parseKursplanImportCustomId,
+} from '../ui/adminPanelMessage.js';
 import { findGuildMemberAcrossGuilds } from '../discordHelpers.js';
-import { CLASS_NAME_LABELS, type ClassName, type Fachrichtung } from '../../types/domain.js';
+import {
+  CLASS_NAMES,
+  CLASS_NAME_LABELS,
+  type ClassName,
+  type Fachrichtung,
+} from '../../types/domain.js';
 import { AppError, ValidationError } from '../../utils/errors.js';
 import { createChildLogger } from '../../utils/logger.js';
 
@@ -212,6 +226,128 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   const ackCourseEntryId = parseCoursePlanAckCustomId(interaction.customId);
   if (ackCourseEntryId) {
     await handleCoursePlanAck(interaction, ackCourseEntryId);
+    return;
+  }
+
+  if (interaction.customId === ADMIN_PANEL_KLASSENBEREICHE_CUSTOM_ID) {
+    await handleAdminPanelKlassenbereiche(interaction);
+    return;
+  }
+
+  const kursplanImportClassName = parseKursplanImportCustomId(interaction.customId);
+  if (kursplanImportClassName) {
+    await handleAdminPanelKursplanImport(interaction, kursplanImportClassName);
+    return;
+  }
+
+  if (interaction.customId === ADMIN_PANEL_KURSINHALTE_IMPORT_CUSTOM_ID) {
+    await handleAdminPanelKursinhalteImport(interaction);
+  }
+}
+
+/**
+ * Admin-Panel-Buttons (siehe adminPanelMessage.ts) - bewusst OHNE die
+ * generische hasPermissionLevel()-Vorpruefung der Slash-Befehle (die gibt es
+ * fuer Button-Interaktionen nicht): "Klassenbereiche einrichten" prueft
+ * explizit isServerAdmin(), waehrend Kursplan-/Kursinhalte-Import bereits
+ * durch die aufgerufenen Service-Funktionen selbst ADMIN-only abgesichert
+ * sind (importCoursePlanForClass()/importCourseContentAsAdmin() werfen sonst
+ * PermissionError, die handleInteractionError() sauber als ephemere
+ * Fehlermeldung anzeigt) - Fail-closed in beiden Faellen.
+ */
+async function handleAdminPanelKlassenbereiche(interaction: ButtonInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    if (!isServerAdmin(member, guildConfig)) {
+      await interaction.reply({
+        content: 'Du hast keine Berechtigung, diese Aktion auszuführen.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const lines: string[] = [];
+    for (const name of CLASS_NAMES) {
+      const klasse = await getClassByName(member.guild.id, name);
+      if (!klasse || !klasse.roleId) {
+        lines.push(
+          `${CLASS_NAME_LABELS[name]}: übersprungen - noch keine Rolle konfiguriert (siehe /setup-klassen).`,
+        );
+        continue;
+      }
+      const result = await setupClassArea(member.guild, guildConfig, klasse, interaction.user.id);
+      lines.push(`${CLASS_NAME_LABELS[name]}: ${formatClassAreaSetupResult(result)}.`);
+    }
+
+    await interaction.editReply({ content: lines.join('\n') });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+async function handleAdminPanelKursplanImport(
+  interaction: ButtonInteraction,
+  className: ClassName,
+): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    const { importResult, channelSummary } = await runKursplanImportAndSync(
+      member.guild,
+      guildConfig,
+      member,
+      className,
+      interaction.user.id,
+    );
+
+    await interaction.editReply({
+      content:
+        `Kursplan ${CLASS_NAME_LABELS[className]} importiert (Quelle: \`${importResult.sourceFile}\`): ` +
+        `${importResult.coursesCreated} Kurse neu, ${importResult.coursesUpdated} aktualisiert, ` +
+        `${importResult.specialDaysCreated} besondere Termine neu, ${importResult.specialDaysUpdated} aktualisiert.\n` +
+        channelSummary,
+    });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
+  }
+}
+
+async function handleAdminPanelKursinhalteImport(interaction: ButtonInteraction): Promise<void> {
+  try {
+    const member = await resolveInteractionMember(interaction);
+    if (!member) {
+      await interaction.reply({ content: NO_SHARED_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const guildConfig = await getOrCreateGuildConfig(member.guild.id);
+    const summary = await importCourseContentAsAdmin(guildConfig, member, interaction.user.id);
+
+    await interaction.editReply({
+      content:
+        `Kursinhalte importiert (Quelle: \`${summary.sourceFile}\`): ${summary.coursesProcessed} Kurse ` +
+        `verarbeitet, ${summary.itemsCreated} Einträge neu, ${summary.itemsUpdated} aktualisiert, ` +
+        `${summary.itemsDeleted} entfernt.`,
+    });
+  } catch (error) {
+    await handleInteractionError(interaction, error);
   }
 }
 

@@ -1,11 +1,24 @@
 import { randomUUID } from 'node:crypto';
-import type { TextChannel } from 'discord.js';
+import { ChannelType, type Guild, type GuildMember, type TextChannel } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { getOrCreateGuildConfig } from '../src/repositories/guildConfigRepository.js';
-import { getOrCreateClass } from '../src/repositories/classRepository.js';
+import { getOrCreateClass, updateClassChannels } from '../src/repositories/classRepository.js';
 import { upsertCourseEntry } from '../src/repositories/coursePlanRepository.js';
 import { replaceCourseContentForCourse } from '../src/repositories/courseContentRepository.js';
-import { syncClassCoursePlanChannel } from '../src/services/classCoursePlanService.js';
+import {
+  runKursplanImportAndSync,
+  syncClassCoursePlanChannel,
+} from '../src/services/classCoursePlanService.js';
+import { PermissionError, ValidationError } from '../src/utils/errors.js';
+
+function fakeMember(options: { id: string; isAdministrator?: boolean }): GuildMember {
+  return {
+    id: options.id,
+    guild: { ownerId: 'someone-else' },
+    permissions: { has: () => options.isAdministrator ?? false },
+    roles: { cache: { has: () => false } },
+  } as unknown as GuildMember;
+}
 
 interface FakeMessage {
   embeds: { footer?: { text: string } | null }[];
@@ -16,6 +29,7 @@ function fakeTextChannel(): { channel: TextChannel; messages: FakeMessage[] } {
   const messages: FakeMessage[] = [];
 
   const channel = {
+    type: ChannelType.GuildText,
     messages: {
       fetch: vi.fn(async () => ({
         find: (predicate: (message: FakeMessage) => boolean) => messages.find(predicate),
@@ -140,5 +154,87 @@ describe('syncClassCoursePlanChannel', () => {
 
     expect(second).toEqual({ total: 3, posted: 1, updated: 2 });
     expect(messages).toHaveLength(3);
+  });
+});
+
+function fakeGuildWithChannel(
+  guildId: string,
+  channel: TextChannel | null,
+  channelId: string,
+): Guild {
+  return {
+    id: guildId,
+    channels: {
+      fetch: vi.fn(async (id: string) => (id === channelId ? channel : null)),
+    },
+  } as unknown as Guild;
+}
+
+describe('runKursplanImportAndSync', () => {
+  it('importiert den echten Kursplan fuer Klasse A und synchronisiert den Kursplan-Kanal', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const guildConfig = await getOrCreateGuildConfig(guildId);
+    await getOrCreateClass(guildId, 'A');
+    const { channel, messages } = fakeTextChannel();
+    await updateClassChannels(guildId, 'A', { coursePlanChannelId: 'channel-kursplan' });
+    const guild = fakeGuildWithChannel(guildId, channel, 'channel-kursplan');
+    const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
+
+    const { importResult, channelSummary } = await runKursplanImportAndSync(
+      guild,
+      guildConfig,
+      admin,
+      'A',
+      admin.id,
+    );
+
+    expect(importResult.coursesCreated).toBeGreaterThan(0);
+    expect(channelSummary).toContain('aktualisiert');
+    expect(messages.length).toBe(importResult.coursesCreated + importResult.coursesUpdated);
+  });
+
+  it('meldet fehlenden Kursplan-Kanal, statt abzubrechen, wenn die Klasse noch keinen hat', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const guildConfig = await getOrCreateGuildConfig(guildId);
+    await getOrCreateClass(guildId, 'A');
+    const guild = fakeGuildWithChannel(guildId, null, 'channel-kursplan');
+    const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
+
+    const { channelSummary } = await runKursplanImportAndSync(
+      guild,
+      guildConfig,
+      admin,
+      'A',
+      admin.id,
+    );
+
+    expect(channelSummary).toContain('Kein Kursplan-Kanal vorhanden');
+  });
+
+  it('lehnt ein normales Mitglied ab, bevor irgendetwas importiert oder synchronisiert wird', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const guildConfig = await getOrCreateGuildConfig(guildId);
+    await getOrCreateClass(guildId, 'A');
+    const { channel, messages } = fakeTextChannel();
+    await updateClassChannels(guildId, 'A', { coursePlanChannelId: 'channel-kursplan' });
+    const guild = fakeGuildWithChannel(guildId, channel, 'channel-kursplan');
+    const member = fakeMember({ id: 'member-1' });
+
+    await expect(
+      runKursplanImportAndSync(guild, guildConfig, member, 'A', member.id),
+    ).rejects.toBeInstanceOf(PermissionError);
+    expect(messages).toHaveLength(0);
+  });
+
+  it('wirft ValidationError fuer eine Klasse ohne hinterlegte Kursplan-Quelldatei', async () => {
+    const guildId = `guild-${randomUUID()}`;
+    const guildConfig = await getOrCreateGuildConfig(guildId);
+    await getOrCreateClass(guildId, 'B');
+    const guild = fakeGuildWithChannel(guildId, null, 'channel-kursplan');
+    const admin = fakeMember({ id: 'admin-1', isAdministrator: true });
+
+    await expect(
+      runKursplanImportAndSync(guild, guildConfig, admin, 'B', admin.id),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });

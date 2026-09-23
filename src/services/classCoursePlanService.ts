@@ -1,11 +1,17 @@
-import type { TextChannel } from 'discord.js';
-import type { CourseContentItem } from '@prisma/client';
+import { ChannelType, type Guild, type GuildMember, type TextChannel } from 'discord.js';
+import type { CourseContentItem, GuildConfig } from '@prisma/client';
+import { getClassByName } from '../repositories/classRepository.js';
 import { listCourseEntriesByClassId } from '../repositories/coursePlanRepository.js';
 import { getCourseContentByCourseNumber } from './courseContentService.js';
+import {
+  importCoursePlanForClass,
+  type CoursePlanImportResult,
+} from './coursePlanImportService.js';
 import {
   buildClassCoursePlanEmbed,
   buildClassCoursePlanFooterText,
 } from '../bot/ui/classCoursePlanMessage.js';
+import type { ClassName } from '../types/domain.js';
 
 /**
  * Inhaltstexte, die (nach Entfernen der fuehrenden Nummerierung, siehe
@@ -69,4 +75,46 @@ export async function syncClassCoursePlanChannel(
   }
 
   return result;
+}
+
+export interface KursplanImportAndSyncResult {
+  importResult: CoursePlanImportResult;
+  channelSummary: string;
+}
+
+/**
+ * Buendelt genau die zwei Schritte, die `/kursplan-importieren` ausfuehrt
+ * (Import + Kanal-Sync) - als eigene Funktion extrahiert, damit sowohl der
+ * Slash-Befehl (kursplanImportieren.ts) als auch der gleichwertige Button im
+ * Admin-Panel (siehe adminPanelService.ts/interactionCreate.ts) exakt
+ * dieselbe Logik verwenden, statt sie an zwei Stellen zu pflegen.
+ */
+export async function runKursplanImportAndSync(
+  guild: Guild,
+  guildConfig: GuildConfig,
+  member: GuildMember,
+  className: ClassName,
+  actorDiscordId: string,
+): Promise<KursplanImportAndSyncResult> {
+  const importResult = await importCoursePlanForClass(
+    guildConfig,
+    member,
+    className,
+    actorDiscordId,
+  );
+
+  let channelSummary =
+    'Kein Kursplan-Kanal vorhanden - bitte zuerst `/setup-klassenbereiche` erneut ausführen.';
+  const klasse = await getClassByName(guild.id, className);
+  if (klasse?.coursePlanChannelId) {
+    const channel = await guild.channels.fetch(klasse.coursePlanChannelId);
+    if (channel?.type === ChannelType.GuildText) {
+      const syncResult = await syncClassCoursePlanChannel(channel, klasse.id);
+      channelSummary =
+        `Kanal #📚-kursplan aktualisiert: ${syncResult.posted} neu gepostet, ` +
+        `${syncResult.updated} aktualisiert (${syncResult.total} Kurse insgesamt).`;
+    }
+  }
+
+  return { importResult, channelSummary };
 }

@@ -1,10 +1,8 @@
-import { ChannelType, MessageFlags, SlashCommandBuilder, type GuildMember } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder, type GuildMember } from 'discord.js';
 import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
 import { getOrCreateGuildConfig } from '../../../repositories/guildConfigRepository.js';
-import { getClassByName } from '../../../repositories/classRepository.js';
-import { importCoursePlanForClass } from '../../../services/coursePlanImportService.js';
-import { syncClassCoursePlanChannel } from '../../../services/classCoursePlanService.js';
+import { runKursplanImportAndSync } from '../../../services/classCoursePlanService.js';
 import { CLASS_NAMES, CLASS_NAME_LABELS, classNameSchema } from '../../../types/domain.js';
 
 const command: Command = {
@@ -33,31 +31,19 @@ const command: Command = {
     const member = interaction.member as GuildMember;
     const guildConfig = await getOrCreateGuildConfig(interaction.guild.id);
 
-    const result = await importCoursePlanForClass(
+    const { importResult, channelSummary } = await runKursplanImportAndSync(
+      interaction.guild,
       guildConfig,
       member,
       className,
       interaction.user.id,
     );
 
-    let channelSummary =
-      'Kein Kursplan-Kanal vorhanden - bitte zuerst `/setup-klassenbereiche` erneut ausführen.';
-    const klasse = await getClassByName(interaction.guild.id, className);
-    if (klasse?.coursePlanChannelId) {
-      const channel = await interaction.guild.channels.fetch(klasse.coursePlanChannelId);
-      if (channel?.type === ChannelType.GuildText) {
-        const syncResult = await syncClassCoursePlanChannel(channel, klasse.id);
-        channelSummary =
-          `Kanal #📚-kursplan aktualisiert: ${syncResult.posted} neu gepostet, ` +
-          `${syncResult.updated} aktualisiert (${syncResult.total} Kurse insgesamt).`;
-      }
-    }
-
     await interaction.editReply({
       content:
-        `Kursplan ${CLASS_NAME_LABELS[className]} importiert (Quelle: \`${result.sourceFile}\`): ` +
-        `${result.coursesCreated} Kurse neu, ${result.coursesUpdated} aktualisiert, ` +
-        `${result.specialDaysCreated} besondere Termine neu, ${result.specialDaysUpdated} aktualisiert.\n` +
+        `Kursplan ${CLASS_NAME_LABELS[className]} importiert (Quelle: \`${importResult.sourceFile}\`): ` +
+        `${importResult.coursesCreated} Kurse neu, ${importResult.coursesUpdated} aktualisiert, ` +
+        `${importResult.specialDaysCreated} besondere Termine neu, ${importResult.specialDaysUpdated} aktualisiert.\n` +
         channelSummary,
     });
   },

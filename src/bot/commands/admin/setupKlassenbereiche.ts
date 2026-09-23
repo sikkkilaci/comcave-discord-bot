@@ -3,7 +3,7 @@ import type { Command } from '../../../types/command.js';
 import { PermissionLevel } from '../../../permissions/PermissionLevel.js';
 import { getOrCreateGuildConfig } from '../../../repositories/guildConfigRepository.js';
 import { getClassByName } from '../../../repositories/classRepository.js';
-import { setupClassArea } from '../../../services/classAreaService.js';
+import { formatClassAreaSetupResult, setupClassArea } from '../../../services/classAreaService.js';
 import {
   assertClassManagementAccess,
   isServerAdmin,
@@ -83,12 +83,7 @@ const command: Command = {
           klasse,
           interaction.user.id,
         );
-        const summary = result.categoryCreated
-          ? `Kategorie und ${result.channelsCreated.length} Kanaele neu angelegt`
-          : result.channelsCreated.length > 0
-            ? `${result.channelsCreated.length} fehlende Kanaele ergaenzt (${result.channelsSkipped.length} bereits vorhanden)`
-            : 'bereits vollstaendig eingerichtet';
-        lines.push(`${CLASS_NAME_LABELS[name]}: ${summary}.`);
+        lines.push(`${CLASS_NAME_LABELS[name]}: ${formatClassAreaSetupResult(result)}.`);
       } catch (error) {
         if (error instanceof ValidationError) {
           lines.push(`${CLASS_NAME_LABELS[name]}: Fehler - ${error.message}`);

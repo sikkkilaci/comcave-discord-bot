@@ -381,7 +381,17 @@ Klasse B/C spaeter eigene Daten erhalten koennen, ohne Code/Modell aendern zu mu
 - `/kursplan-importieren klasse:<A|B|C>` (nur Admins) - importiert/aktualisiert die Kursdaten einer
   Klasse aus ihrer versionierten Quelldatei. Fuer Klassen ohne hinterlegte Quelle (aktuell B/C)
   schlaegt der Befehl kontrolliert mit einer Fehlermeldung fehl, statt versehentlich Daten einer
-  anderen Klasse zu verwenden.
+  anderen Klasse zu verwenden. Direkt im Anschluss wird automatisch der Kanal `📚-kursplan` im
+  privaten Klassenbereich synchronisiert (`classCoursePlanService.ts`): je Kurs-Slot eine eigene,
+  dauerhafte Nachricht mit Titel, Zeitraum, Dozent, Klausur-Kennzeichnung und Kursgliederung -
+  oeffentlich fuer die Klasse sichtbar statt nur ueber `/kursplan` abrufbar.
+
+**Admin-Panel (Klick statt Tippen):** `/admin-panel-posten` (nur Admins) postet im internen Kanal
+`⚙️-verwaltung` ein dauerhaftes Panel mit Buttons fuer "Klassenbereiche einrichten",
+"Kursplan <Klasse> importieren" (je Klasse mit hinterlegter Quelle) und "Kursinhalte importieren" -
+fuehrt exakt dieselbe Logik wie die zugehoerigen Slash-Befehle aus, ohne dass ein Admin Optionen
+eintippen/auswaehlen muss (siehe `adminPanelMessage.ts`/`adminPanelService.ts`). Die Slash-Befehle
+selbst bleiben unveraendert bestehen.
 
 **Import:** `data/course-plans/0002_KALENDER_ABLAUF_KW_preview.html` ist die versionierte
 Quelldatei fuer Klasse A. Ein regexbasierter Parser (bewusst kein `eval()`) extrahiert daraus

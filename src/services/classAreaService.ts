@@ -209,6 +209,25 @@ export interface ClassAreaSetupResult {
 }
 
 /**
+ * Menschenlesbare Ein-Zeilen-Zusammenfassung eines setupClassArea()-Ergebnisses -
+ * von /setup-klassenbereiche UND dem gleichwertigen Admin-Panel-Button
+ * verwendet (siehe interactionCreate.ts), damit beide Einstiegspunkte exakt
+ * denselben Text zeigen.
+ */
+export function formatClassAreaSetupResult(result: ClassAreaSetupResult): string {
+  if (result.categoryCreated) {
+    return `Kategorie und ${result.channelsCreated.length} Kanaele neu angelegt`;
+  }
+  if (result.channelsCreated.length > 0) {
+    return (
+      `${result.channelsCreated.length} fehlende Kanaele ergaenzt ` +
+      `(${result.channelsSkipped.length} bereits vorhanden)`
+    );
+  }
+  return 'bereits vollstaendig eingerichtet';
+}
+
+/**
  * Richtet den privaten Bereich einer Klasse ein: eine Kategorie plus sieben
  * Kanaele, sichtbar nur fuer die Klassenrolle (und optional die konfigurierte
  * Admin-/Klassenleitungs-Rolle). Sowohl die Kategorie als auch jeder einzelne
